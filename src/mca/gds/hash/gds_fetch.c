@@ -523,10 +523,265 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(pmix_peer_t *peer,
     return rc;
 }
 
+/* The PMIx_Get visibility rule - see the "visibility" parameter of the
+ * fetch in src/mca/gds/gds.h, and docs/how-things-work/data_scope.rst.
+ *
+ * This module keeps a process's data in two tables: "local", what it put
+ * at PMIX_LOCAL scope, and "remote", what it put at PMIX_REMOTE scope -
+ * a PMIX_GLOBAL put is stored in both. So the rule comes down to which
+ * table a get may read: "local" for a target on this node, "remote" for
+ * one on another node, and never the other. A PMIX_DATA_SCOPE that names
+ * the location the target is not at reads neither. A target whose node
+ * this module cannot tell reads both, local first, as before the rule. */
+
+/* Does the rule govern this request at all? Job-level data (a wildcard
+ * rank), a reserved key (the host's data about the job), a PMIX_INTERNAL
+ * scope, and this process's own data are not anybody else's put data,
+ * and are answered as before. */
+static bool visibility_applies(const pmix_proc_t *proc, pmix_scope_t scope, const char *key)
+{
+    if (PMIX_SCOPE_UNDEF != scope && PMIX_LOCAL != scope &&
+        PMIX_REMOTE != scope && PMIX_GLOBAL != scope) {
+        return false;
+    }
+    if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+        return false;
+    }
+    if (PMIX_RANK_UNDEF == proc->rank) {
+        return true;
+    }
+    if (!PMIX_RANK_IS_VALID(proc->rank)) {
+        return false;
+    }
+    return !pmix_gds_base_is_me(proc);
+}
+
+/* Where a rank of this job is, relative to us: its PMIX_HOSTNAME, which
+ * the host stated or store_map() derived from the maps, against ours. */
+static pmix_gds_base_locality_t rank_locality(pmix_job_t *trk, pmix_rank_t rank)
+{
+    pmix_list_t kvs;
+    pmix_kval_t *kv;
+    pmix_gds_base_locality_t loc = PMIX_GDS_LOC_UNKNOWN;
+
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    if (PMIX_SUCCESS == pmix_hash_fetch(&trk->internal, rank, PMIX_HOSTNAME, NULL, 0, &kvs, NULL)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&kvs);
+        if (NULL != kv && NULL != kv->value && PMIX_STRING == kv->value->type) {
+            loc = pmix_gds_base_host_locality(kv->value->data.string);
+        }
+    }
+    PMIX_LIST_DESTRUCT(&kvs);
+    return loc;
+}
+
+/* one named rank */
+static pmix_status_t fetch_visible_rank(pmix_job_t *trk, pmix_rank_t rank,
+                                        pmix_scope_t scope, const char *key,
+                                        pmix_info_t *qualifiers, size_t nqual,
+                                        pmix_list_t *kvs)
+{
+    const pmix_gds_base_locality_t loc = pmix_gds_base_locality_or_scope(rank_locality(trk, rank),
+                                                                          scope);
+    const size_t mark = pmix_list_get_size(kvs);
+    pmix_hash_table_t *tables[2];
+    size_t ntables = 0, n;
+    pmix_list_t scratch;
+    pmix_status_t rc;
+    bool exists;
+
+    /* A scope that contradicts where the target is finds nothing, and
+     * nothing that arrives later will change that. Say so with the code
+     * a server reads as "do not wait for it" (see pmix_server_get). */
+    if (pmix_gds_base_scope_contradicts(scope, loc)) {
+        return PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+    }
+    if (PMIX_GDS_LOC_REMOTE != loc) {
+        tables[ntables++] = &trk->local;
+    }
+    if (PMIX_GDS_LOC_LOCAL != loc) {
+        tables[ntables++] = &trk->remote;
+    }
+
+    if (PMIX_SCOPE_UNDEF == scope || PMIX_GLOBAL == scope) {
+        /* what the host told us about this rank lives here */
+        rc = pmix_hash_fetch(&trk->internal, rank, key, qualifiers, nqual, kvs, NULL);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        if (PMIX_SUCCESS == rc && NULL != key) {
+            return PMIX_SUCCESS;
+        }
+    }
+    for (n = 0; n < ntables; n++) {
+        rc = pmix_hash_fetch(tables[n], rank, key, qualifiers, nqual, kvs, NULL);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        if (NULL != key && pmix_list_get_size(kvs) > mark) {
+            return PMIX_SUCCESS;
+        }
+    }
+    if (pmix_list_get_size(kvs) > mark) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_GDS_LOC_UNKNOWN == loc) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* Nothing this process may see. Say whether the key is there all the
+     * same: a server parks a get for a local target that misses, waiting
+     * for the commit that will bring the key, and data that is there but
+     * not shown to us is never going to arrive. */
+    PMIX_CONSTRUCT(&scratch, pmix_list_t);
+    rc = pmix_hash_fetch((PMIX_GDS_LOC_LOCAL == loc) ? &trk->remote : &trk->local, rank, key,
+                         qualifiers, nqual, &scratch, NULL);
+    exists = (0 < pmix_list_get_size(&scratch));
+    PMIX_LIST_DESTRUCT(&scratch);
+    if (PMIX_ERR_NOMEM == rc) {
+        return rc;
+    }
+    return exists ? PMIX_ERR_EXISTS_OUTSIDE_SCOPE : PMIX_ERR_NOT_FOUND;
+}
+
+/* The filters a PMIX_RANK_UNDEF search hands pmix_hash_fetch_lowest_rank_if():
+ * a rank whose node is unknown passes both, as it reads both tables. */
+static bool keep_local(pmix_rank_t rank, void *ctx)
+{
+    return PMIX_GDS_LOC_REMOTE != rank_locality((pmix_job_t *) ctx, rank);
+}
+
+static bool keep_remote(pmix_rank_t rank, void *ctx)
+{
+    return PMIX_GDS_LOC_LOCAL != rank_locality((pmix_job_t *) ctx, rank);
+}
+
+/* PMIX_RANK_UNDEF: any rank of the namespace. The rule is applied rank by
+ * rank - a local rank's "remote" table, and a remote rank's "local" one,
+ * are never read - and a scope narrows the ranks searched: PMIX_LOCAL to
+ * those on our node, PMIX_REMOTE to the others. A keyed search returns
+ * the lowest-numbered rank that answers, job-level data first. */
+static pmix_status_t fetch_visible_any(pmix_job_t *trk, pmix_scope_t scope,
+                                       const char *key, pmix_info_t *qualifiers,
+                                       size_t nqual, pmix_list_t *kvs)
+{
+    const pmix_rank_t nprocs = trk->nptr->nprocs;
+    const size_t mark = pmix_list_get_size(kvs);
+    pmix_gds_base_locality_t loc;
+    pmix_status_t rc;
+    pmix_rank_t rnk;
+
+    if (PMIX_SCOPE_UNDEF == scope || PMIX_GLOBAL == scope) {
+        /* what the host said about the job, and about each rank */
+        if (NULL != key) {
+            rc = pmix_hash_fetch_lowest_rank(&trk->internal, nprocs, key, qualifiers, nqual,
+                                             kvs, NULL);
+            if (PMIX_SUCCESS == rc || PMIX_ERR_NOMEM == rc) {
+                return rc;
+            }
+            rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, key, qualifiers, nqual,
+                                 kvs, NULL);
+            if (PMIX_SUCCESS == rc || PMIX_ERR_NOMEM == rc) {
+                return rc;
+            }
+        } else {
+            for (rnk = 0; rnk < nprocs; rnk++) {
+                rc = pmix_hash_fetch(&trk->internal, rnk, NULL, NULL, 0, kvs, NULL);
+                if (PMIX_ERR_NOMEM == rc) {
+                    return rc;
+                }
+            }
+            rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL);
+            if (PMIX_ERR_NOMEM == rc) {
+                return rc;
+            }
+        }
+    }
+
+    if (NULL != key) {
+        pmix_list_t lk, rk;
+        pmix_kval_t *kv;
+        pmix_status_t lrc = PMIX_ERR_NOT_FOUND, rrc = PMIX_ERR_NOT_FOUND;
+        pmix_rank_t lrank = PMIX_RANK_INVALID, rrank = PMIX_RANK_INVALID;
+
+        /* each table gives its lowest visible rank; the lower of the two
+         * answers, so the result does not depend on which table holds it */
+        PMIX_CONSTRUCT(&lk, pmix_list_t);
+        PMIX_CONSTRUCT(&rk, pmix_list_t);
+        if (PMIX_REMOTE != scope) {
+            lrc = pmix_hash_fetch_lowest_rank_if(&trk->local, nprocs, key, qualifiers, nqual,
+                                                 &lk, NULL, keep_local, trk, &lrank);
+        }
+        if (PMIX_ERR_NOMEM != lrc && PMIX_LOCAL != scope) {
+            rrc = pmix_hash_fetch_lowest_rank_if(&trk->remote, nprocs, key, qualifiers, nqual,
+                                                 &rk, NULL, keep_remote, trk, &rrank);
+        }
+        if (PMIX_ERR_NOMEM == lrc || PMIX_ERR_NOMEM == rrc) {
+            PMIX_LIST_DESTRUCT(&lk);
+            PMIX_LIST_DESTRUCT(&rk);
+            return PMIX_ERR_NOMEM;
+        }
+        if (PMIX_SUCCESS == lrc && (PMIX_SUCCESS != rrc || lrank <= rrank)) {
+            while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(&lk))) {
+                pmix_list_append(kvs, &kv->super);
+            }
+        } else if (PMIX_SUCCESS == rrc) {
+            while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(&rk))) {
+                pmix_list_append(kvs, &kv->super);
+            }
+        }
+        PMIX_LIST_DESTRUCT(&lk);
+        PMIX_LIST_DESTRUCT(&rk);
+        if (pmix_list_get_size(kvs) == mark) {
+            /* Nothing we may see. If the key is here all the same, every
+             * copy of it is one we may not see - hidden by where its
+             * poster is, or outside the scope we asked with - so say so:
+             * a server would otherwise park the request waiting for a key
+             * that is already here and will never be shown to this
+             * reader. A legacy key is unique to the job, so this is the
+             * poster's copy. */
+            PMIX_CONSTRUCT(&lk, pmix_list_t);
+            lrc = pmix_hash_fetch_lowest_rank(&trk->local, nprocs, key, qualifiers, nqual,
+                                              &lk, NULL);
+            if (PMIX_SUCCESS != lrc && PMIX_ERR_NOMEM != lrc) {
+                lrc = pmix_hash_fetch_lowest_rank(&trk->remote, nprocs, key, qualifiers, nqual,
+                                                  &lk, NULL);
+            }
+            PMIX_LIST_DESTRUCT(&lk);
+            if (PMIX_ERR_NOMEM == lrc) {
+                return lrc;
+            }
+            if (PMIX_SUCCESS == lrc) {
+                return PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+            }
+        }
+    } else {
+        /* "everything from every rank" is an aggregate: each rank gives
+         * what this process may see of it, in rank order */
+        rc = PMIX_SUCCESS;
+        for (rnk = 0; rnk < nprocs && PMIX_ERR_NOMEM != rc; rnk++) {
+            loc = rank_locality(trk, rnk);
+            if (pmix_gds_base_scope_contradicts(scope, loc)) {
+                continue;
+            }
+            if (PMIX_GDS_LOC_REMOTE != loc) {
+                rc = pmix_hash_fetch(&trk->local, rnk, NULL, NULL, 0, kvs, NULL);
+            }
+            if (PMIX_ERR_NOMEM != rc && PMIX_GDS_LOC_LOCAL != loc) {
+                rc = pmix_hash_fetch(&trk->remote, rnk, NULL, NULL, 0, kvs, NULL);
+            }
+        }
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+    }
+    return (pmix_list_get_size(kvs) > mark) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND;
+}
+
 pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
                                   const pmix_proc_t *proc, pmix_scope_t scope, bool copy,
                                   const char *key, pmix_info_t qualifiers[], size_t nqual,
-                                  pmix_realm_t realm, pmix_list_t *kvs)
+                                  pmix_realm_t realm, bool visibility, pmix_list_t *kvs)
 {
     pmix_peer_t *peer = (pmix_peer_t*)pr;
     pmix_job_t *trk;
@@ -666,6 +921,15 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
             }
             return rc;
         }
+    }
+
+    /* A PMIx_Get of a process's put data: what this process may see of
+     * it depends on where the target is. See fetch_visible_rank(). */
+    if (visibility && visibility_applies(proc, scope, key)) {
+        if (PMIX_RANK_UNDEF == proc->rank) {
+            return fetch_visible_any(trk, scope, key, qualifiers, nqual, kvs);
+        }
+        return fetch_visible_rank(trk, proc->rank, scope, key, qualifiers, nqual, kvs);
     }
 
     /* fetch from the corresponding hash table - note that

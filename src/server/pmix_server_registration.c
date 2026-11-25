@@ -476,7 +476,11 @@ static void _register_nspace(int sd, short args, void *cbdata)
                              * hand the datastore a value that was never
                              * populated and then report the store's result
                              * as though the transfer had succeeded */
-                            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_REMOTE, kv);
+                            /* the host's word about this rank, for every
+                             * reader: PMIX_GLOBAL, since a PMIx_Get never
+                             * shows a same-node reader a PMIX_REMOTE copy
+                             * (see "DATA SCOPE" in PMIx_Get(3)) */
+                            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_GLOBAL, kv);
                         }
                         PMIX_RELEASE(kv); // maintain refcount
                         if (PMIX_SUCCESS != rc) {

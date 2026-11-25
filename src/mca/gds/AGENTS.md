@@ -140,7 +140,7 @@ explicit fallbacks for the `NULL` case (see below).
 | `store_job_info` | `store_job_info_fn_t` | client | store the reply buffer produced above |
 | `store` | `store_fn_t` | both | store one `pmix_kval_t` for a proc at a scope |
 | `store_modex` | `store_modex_fn_t` | server | unpack + store an aggregated fence/modex blob |
-| `fetch` | `fetch_fn_t` | both | retrieve `pmix_kval_t`s for a `(peer, proc, key, scope)` request |
+| `fetch` | `fetch_fn_t` | both | retrieve `pmix_kval_t`s for a `(peer, proc, key, scope)` request; `visibility` says the fetch answers a `PMIx_Get` (see "What a `PMIx_Get` may see" below) |
 | `setup_fork` | `setup_fork_fn_t` | server | add any env vars a child needs to reach this store |
 | `add_nspace` | `add_nspace_fn_t` | server | note a new nspace (and per-nspace directives) |
 | `del_nspace` | `del_nspace_fn_t` | both | drop an nspace and its data |
@@ -213,6 +213,69 @@ you are touching:
 `PMIX_GDS_CHECK_COMPONENT(p, s)` / `PMIX_GDS_CHECK_PEER_COMPONENT(p1, p2)`
 are convenience string comparisons against the resolved module name — used,
 e.g., to special-case `"hash"` behavior.
+
+## What a `PMIx_Get` may see — the `visibility` parameter
+
+Where a process put a value decides who may read it, and where the
+target is relative to the reader decides what the reader sees
+(`PMIx_Put(3)`, and "DATA SCOPE" in `PMIx_Get(3)`). The full answer for
+every combination of scope and location is in
+[`docs/how-things-work/data_scope.rst`](../../../docs/how-things-work/data_scope.rst).
+In short:
+
+| target | visible | never visible |
+|---|---|---|
+| on the reader's node | its `PMIX_LOCAL` and `PMIX_GLOBAL` data | its `PMIX_REMOTE` data |
+| on another node | its `PMIX_REMOTE` and `PMIX_GLOBAL` data | its `PMIX_LOCAL` data |
+
+A `PMIX_DATA_SCOPE` on a get names the target's location, not a table:
+`PMIX_LOCAL` is "a target on my node", `PMIX_REMOTE` "a target on another
+node", `PMIX_GLOBAL` either. A scope naming the location the target is not
+at finds nothing, `PMIX_GLOBAL` data included. Data that exists but is not
+visible comes back `PMIX_ERR_EXISTS_OUTSIDE_SCOPE`, so a server does not
+park the request waiting for it.
+
+**Both modules apply this only when the fetch's `visibility` argument is
+true.** `PMIX_GDS_FETCH_KV` passes `pmix_cb_t.get_visibility`, and only
+the get paths set it: `pmix_server_get` and `_satisfy_request` on the
+server, `try_local_fetch` and `get_data` on the client. Every other fetch
+reads a scope's table exactly as stored, and has to:
+`PMIx_server_dmodex_request` answers *another* node with the target's
+`PMIX_REMOTE` data, which the rule would hide from it.
+`test/unit/server_dmodex.c` holds the two readers apart, and fails if the
+flag is set on the wrong one.
+
+Job-level data, `PMIX_INTERNAL` scope and the reader's own data are not
+anybody's put data and are not subject to it.
+
+Locality comes from the job data each module holds: the target rank's
+`PMIX_HOSTNAME` (stated by the host or derived from the maps) against this
+process's hostname and aliases - `pmix_gds_base_host_locality()` in
+`base/base.h`. A rank with no hostname is of unknown location, and a
+`PMIX_LOCAL`/`PMIX_REMOTE` scope on the get then stands in for it
+(`pmix_gds_base_locality_or_scope()`). Node IDs are not used: a host may
+number nodes as it likes, and derived ones are per-job map indices.
+`gds/shmem3` reads the hostname from its job chain, which is safe on the
+application's thread.
+
+The host's own `PMIx_Get` does not apply the rule (`get_visibility` is
+false for a server - see `get_applies_visibility()` in
+`src/client/pmix_client_get.c`): the host is not a process of the job,
+and its direct-modex check looks for exactly the data a same-node target
+posted for other nodes.
+
+Two module slots exist for a datastore that shares local clients' data
+outside the server's own store, and both are optional (`hash` leaves them
+NULL): `local_committed` (`PMIX_GDS_LOCAL_COMMITTED`, from
+`pmix_server_commit` for every `PMIX_LOCAL`/`PMIX_GLOBAL` value) and
+`build_local` (`PMIX_GDS_BUILD_LOCAL`, from the fence completion on every
+path, before the reply). `gds/shmem3` builds its local chain with them.
+
+Adding the parameter changed the module interface, so the framework version
+went to 3.0.0. This was openmpi#14873, where a same-node peer was handed the
+`PMIX_REMOTE` copy of a key put at both scopes. Coverage:
+`test/unit/run_getscope.pl` (one node, both fence modes), and the get_scope
+stage of `contrib/dockerswarm/run-gds-tests.sh` (two nodes, both modules).
 
 ## Selection and lifecycle
 

@@ -58,9 +58,12 @@ INPUT PARAMETERS
 ----------------
 
 * ``proc``: Pointer to a ``pmix_proc_t`` identifying the process whose posted data
-  is to be retrieved. A ``NULL`` value is used in place of the caller's own
-  identifier. A rank of ``PMIX_RANK_WILDCARD`` retrieves job-level information for
-  the process's namespace.
+  is to be retrieved. A rank of ``PMIX_RANK_WILDCARD`` retrieves job-level
+  information for the process's namespace, and never data a process posted. A
+  rank of ``PMIX_RANK_UNDEF`` retrieves a key that any process of the namespace
+  may have posted (see `KEYS THAT NAME NO PROCESS`_). A ``NULL`` value is the
+  same as the caller's own namespace with ``PMIX_RANK_UNDEF``. An empty
+  namespace is the caller's own.
 * ``key``: A NULL-terminated string, no longer than ``PMIX_MAX_KEYLEN``
   characters, naming the value to retrieve. A ``NULL`` key requests **all** data
   associated with the identified process.
@@ -144,8 +147,9 @@ for host environments.
   process from the server before returning, picking up values put and committed
   since the last refresh. A ``NULL`` key refreshes all values for the process; a
   rank of ``PMIX_RANK_WILDCARD`` refreshes job-related information.
-* ``PMIX_DATA_SCOPE`` (pmix_scope_t) |mdash| restrict the scope of data to be
-  searched (see :ref:`PMIx_Put(3) <man3-PMIx_Put>`).
+* ``PMIX_DATA_SCOPE`` (pmix_scope_t) |mdash| restrict the search to a target on
+  the caller's node (``PMIX_LOCAL``), to a target on another node
+  (``PMIX_REMOTE``), or to either (``PMIX_GLOBAL``). See `DATA SCOPE`_ below.
 * ``PMIX_GET_POINTER_VALUES`` (bool) |mdash| return a pointer to the value in the
   library's key-value store instead of a copy; the caller must not free it.
 * ``PMIX_GET_STATIC_VALUES`` (bool) |mdash| return the value in storage provided by
@@ -156,6 +160,71 @@ for host environments.
 * ``PMIX_TIMEOUT`` (int) |mdash| maximum time, in seconds, for the get to complete
   before returning an error. Helps avoid "hangs" when the target process never
   exposes the requested data.
+
+
+DATA SCOPE
+----------
+
+What a caller may see of the data another process posted depends on where that
+process is relative to the caller. This follows from the scopes defined in
+:ref:`PMIx_Put(3) <man3-PMIx_Put>`:
+
+* A target on the **same node** as the caller shows the data it posted at
+  ``PMIX_LOCAL`` and ``PMIX_GLOBAL`` scope. Its ``PMIX_REMOTE`` data is not
+  shared with processes on its own node, and is never returned to them.
+* A target on **another node** shows the data it posted at ``PMIX_REMOTE`` and
+  ``PMIX_GLOBAL`` scope. Its ``PMIX_LOCAL`` data never leaves its node.
+
+A process may post the same key at both ``PMIX_LOCAL`` and ``PMIX_REMOTE`` scope
+with different values |mdash| for example, a full transport address for peers on
+its node and a network-only one for everyone else. A ``PMIx_Get`` of that key
+returns the ``PMIX_LOCAL`` value to a caller on the target's node and the
+``PMIX_REMOTE`` value to a caller on any other node. It never returns both.
+
+A ``PMIX_DATA_SCOPE`` directive names where the target is, not which of its
+values to read:
+
+* ``PMIX_LOCAL`` |mdash| the target is on the caller's node.
+* ``PMIX_REMOTE`` |mdash| the target is on another node.
+* ``PMIX_GLOBAL`` |mdash| the target may be on either. This is the same as
+  giving no scope.
+
+A scope that names the location the target is not at finds nothing, including
+data the target posted at ``PMIX_GLOBAL`` scope. ``PMIX_REMOTE`` for a target on
+the caller's node, or ``PMIX_LOCAL`` for a target on another node, therefore
+returns ``PMIX_ERR_NOT_FOUND``. So does a key the caller is not allowed to see,
+such as a same-node target's ``PMIX_REMOTE``-only key. The library returns these
+at once rather than waiting for data that will never become visible.
+
+Two processes share a node when the host environment gave them the same
+``PMIX_NODEID``. When the target's node is not known, these rules are not
+applied. The rules apply to data a process posted with ``PMIx_Put``. They do
+not apply to the reserved keys the host environment provides, which are the
+same for every caller, nor to a caller reading its own data.
+
+
+KEYS THAT NAME NO PROCESS
+-------------------------
+
+A key that is unique across a namespace can be read without knowing which
+process posted it, as with the key-value space of PMI-1 and PMI-2. Pass a
+``NULL`` ``proc``, or the namespace with ``PMIX_RANK_UNDEF``. The library
+searches every process of the namespace, applying the rules above to each
+one, and returns the copy from the lowest-numbered rank the caller may see.
+Job-level data under the key is also found.
+
+A key meant for every reader should therefore be posted at ``PMIX_GLOBAL``
+scope. One posted at ``PMIX_LOCAL`` is found only on the poster's node, and one
+posted at ``PMIX_REMOTE`` only on other nodes.
+
+A ``PMIX_DATA_SCOPE`` directive narrows the search: ``PMIX_LOCAL`` searches
+only the processes on the caller's node, and ``PMIX_REMOTE`` only those on
+other nodes. If no process has posted the key yet, the request waits for it,
+subject to ``PMIX_TIMEOUT``, unless ``PMIX_OPTIONAL`` or ``PMIX_IMMEDIATE`` is
+given.
+
+``PMIX_RANK_WILDCARD`` is not a substitute: it reads job-level information
+only, and a key posted with ``PMIx_Put`` is never found that way.
 
 
 RESERVED KEYS
@@ -326,7 +395,9 @@ final status and value are delivered to ``cbfunc``.
   includes a key that *was* available earlier and has since been deleted
   |mdash| see `NOTES`_.
 * ``PMIX_ERR_EXISTS_OUTSIDE_SCOPE`` |mdash| the requested key exists, but was
-  posted in a scope that does not include the requester.
+  posted in a scope that does not include the requester. A key another process
+  posted with :ref:`PMIx_Put(3) <man3-PMIx_Put>` that the caller may not see is
+  reported as ``PMIX_ERR_NOT_FOUND`` instead (see `DATA SCOPE`_).
 * ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the caller's user may not access the job
   the data belongs to. See :doc:`/hosts/access-control`.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for

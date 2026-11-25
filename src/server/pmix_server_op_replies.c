@@ -195,6 +195,22 @@ finish_collective:
     if (PMIX_SUCCESS == rc) {
         pmix_server_modex_contributed(tracker);
     }
+    /* Every participant has committed by now, so this is when a module
+     * that shares local clients' data publishes what they committed since
+     * the last fence - gds/shmem3's local chain. It has to come before the
+     * reply loop: the reply is what tells each client the new data
+     * exists. Every fence path reaches here, including one the server
+     * completed itself (no data) and one that collected nothing. */
+    if (PMIX_SUCCESS == rc) {
+        PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
+            pmix_status_t lrc;
+            PMIX_GDS_BUILD_LOCAL(lrc, nptr->ns);
+            if (PMIX_SUCCESS != lrc) {
+                /* a reader then misses and asks us - slower, not wrong */
+                PMIX_ERROR_LOG(lrc);
+            }
+        }
+    }
 
     /* Loop across all procs in the tracker, sending them the reply.
      *

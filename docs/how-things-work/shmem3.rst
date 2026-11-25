@@ -258,8 +258,8 @@ are sized generously.
    This is the single easiest way to corrupt the store.
 
 
-The three kinds of segment
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+The four kinds of segment
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. list-table::
    :header-rows: 1
@@ -278,8 +278,14 @@ The three kinds of segment
        between every job in that session.
    * - ``MODEX``
      - ``shared_modex_data_t``
-     - ``hashtab`` holding one collecting fence's aggregated result, and
-       the segment's key index.
+     - ``hashtab`` holding one collecting fence's aggregated result (every
+       process's ``PMIX_REMOTE`` and ``PMIX_GLOBAL`` data), and the
+       segment's key index.
+   * - ``LOCAL``
+     - ``shared_modex_data_t``
+     - ``hashtab`` holding what the server's own clients committed at
+       ``PMIX_LOCAL`` and ``PMIX_GLOBAL`` since the previous local
+       generation, and the segment's key index. See `Local data`_.
 
 Each is placed, created and attached by
 ``shmem3_segment_create_and_attach()``, and each carries its own
@@ -460,6 +466,11 @@ Four things about it are load-bearing:
   every published generation — and takes the lowest free slot. Deriving
   it rather than keeping a tally means no path that releases a
   generation can leave the accounting stale.
+* **Local generations take their slots from the same pool.** The
+  occupancy scan covers both chains, so a local generation and a modex
+  generation never share a slot. A job that runs many fences, each
+  adding a little data, fills slots from both chains; MPICH's start-up
+  does exactly that, and ``examples/get_scope`` runs that pattern.
 * **The session segment is deliberately outside the arena.** A session's
   segment is held by jobs other than the one that built it, while
   ``job_destruct()`` unmaps the arena wholesale, so a session placed
@@ -559,6 +570,30 @@ a client-side write path; it will not silently work.
 How Data Is Written
 -------------------
 
+What a segment may hold
+^^^^^^^^^^^^^^^^^^^^^^^
+
+A segment can hold only a value whose whole payload is copied into it.
+Three types keep their payload in the writer's own heap, with only a
+pointer in the value: ``PMIX_PROC_CPUSET``, ``PMIX_TOPO`` and
+``PMIX_DATA_BUFFER``. Copied into a segment, a reader receives a pointer
+into memory it cannot see, and dereferencing it crashes the reader.
+
+So ``segment_can_hold()`` refuses those types, including when one is
+nested inside a ``PMIX_INFO`` or ``PMIX_VALUE`` array, and the writer
+leaves such a value out of the segment. This applies to every kind of
+segment: job, session, modex and local. A value left out stays in the
+server's ``gds/hash`` store, and a reader that misses it in the segment
+asks the server, which answers it as before.
+
+A ``NULL``-key get ("everything this process posted") cannot be answered
+by a segment that is missing some of that process's values. So a writer
+that leaves anything out marks the segment ``incomplete``, and a
+``NULL``-key get that would read an incomplete segment goes to the server
+instead. The mark is per segment rather than per rank: these types are
+rare in posted data, and a miss costs one round trip, never a wrong
+answer.
+
 Job and session data
 ^^^^^^^^^^^^^^^^^^^^
 
@@ -633,6 +668,105 @@ mapping. A client that had not yet opened it fails to, and falls back.
    of the whole server contribution — it stops, and then converts the
    same code to success for its own caller. Returning it would store the
    first proc of each contribution, discard the rest, and report success.
+
+
+Local data
+^^^^^^^^^^
+
+A ``gds/shmem3`` client answers a ``PMIx_Get`` from its server's segments
+without asking the server. The modex chain holds what the fences
+collected: each process's ``PMIX_REMOTE`` and ``PMIX_GLOBAL`` data. That
+is the right answer for a peer on another node and the wrong one for a
+peer on the reader's node, whose ``PMIX_REMOTE`` data it must never be
+shown. A same-node peer used to get exactly that ``PMIX_REMOTE`` copy
+(openmpi#14873).
+
+So the server keeps a second chain, the **local chain**, beside the modex
+chain. It uses the same generation machinery: its own backing files
+(``localdata.<generation>``), its own slots in the arena, its own key
+index per segment, and tombstones dated by its own generation numbers.
+The two differ only in what goes in and who reads it:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 40 40
+
+   * -
+     - Modex chain
+     - Local chain
+   * - Holds
+     - every process's ``PMIX_REMOTE`` and ``PMIX_GLOBAL`` data
+     - the server's own clients' ``PMIX_LOCAL`` and ``PMIX_GLOBAL`` data,
+       which is what ``gds/hash``'s ``local`` table holds
+   * - Built from
+     - the fence's collected modex
+     - the server's own ``gds/hash`` store
+   * - Read for
+     - a target on another node
+     - a target on the reader's node
+
+A same-node get reads only the local chain and an other-node get reads
+only the modex chain. ``PMIX_GLOBAL`` data is in both, as it is in
+``gds/hash``'s two tables, so each reader finds it in the one chain it
+reads.
+
+When a generation is built
+""""""""""""""""""""""""""
+
+At a fence, and only at a fence. A fence is the one moment the server
+knows its participants have committed, and the fence reply already
+carries segment descriptions to every local client, so a new generation
+costs no extra message.
+
+* The server builds a local generation at every fence that has local
+  data no earlier local generation holds. That includes the all-local
+  fence the server completes without the host
+  (``pmix_server_fence_localonly_opt``), which stores no modex, so a
+  single-node job reads its peers from the local chain too.
+* A generation is a **delta**: it holds only the keys committed since
+  the previous local generation. A fence with nothing new adds no
+  generation. A job that commits once and then fences once has a single
+  local generation for its whole life.
+* The server tracks what it owes the next generation the same way a
+  client tracks what it owes its next commit: a per-namespace record of
+  the ranks and keys committed at ``PMIX_LOCAL`` or ``PMIX_GLOBAL`` since
+  the last build, cleared when the generation is published.
+
+Between fences
+""""""""""""""
+
+Local data is visible at commit, not at a fence, so the local chain can
+fall behind the server's store in a way the modex chain cannot:
+
+* **A key first committed after the last fence** is in no generation. The
+  get misses the chain and goes to the server, which answers it.
+* **A key overwritten after the last fence** is in an older generation
+  with its old value. When the server takes a commit that replaces a key
+  some local generation holds, it records a tombstone for that key, as
+  ``del_key`` does, and tells its clients. Readers then miss the key in
+  the chain and ask the server, and the next generation carries the new
+  value, which a tombstone dated earlier does not shadow.
+
+* **A get of "everything a process posted"** (a ``NULL`` key) over a rank
+  that has any tombstone goes to the server. A keyed get of a withdrawn key
+  misses and asks; an aggregate would just come back without it. The
+  server answers from its own store, merged with this job's segments, so
+  its answer is current and complete.
+
+That second point is also what keeps ``PMIX_GET_REFRESH_CACHE`` honest.
+The refresh brings the server's current values into the client's own
+cache, but the next plain get reads the chain first. Without the
+tombstone it would find the old value there.
+
+What a reader is told
+"""""""""""""""""""""
+
+The local chain is shipped like the modex chain: a fence reply carries
+the newest generation, and a client attaching later is told about the
+rest at its next fence. ``pmix_gds_base_rank_is_local()`` decides which
+chain a rank is read from, by comparing node IDs (see :doc:`data_scope`,
+"Who is on my node"). The rules themselves, and the full table of
+answers, are in :doc:`data_scope`.
 
 
 How Data Is Updated
@@ -789,6 +923,19 @@ data is written once and never re-published, so ``job_fetch()`` asks with
 legitimately come back, so ``modex_fetch()`` asks with each generation's
 own number as it walks, and a tombstone shadows only generations up to
 the one it was made at.
+
+**The local chain dates tombstones the same way, by its own counter.** A
+tombstone records both chains' generation numbers at the moment it was
+made, and each chain's walk compares against its own. The local chain
+leans on tombstones more than the modex does: besides ``del_key``, the
+server records one whenever a commit replaces a key a local generation
+holds (see `Between fences`_).
+
+**A tombstone applies to qualified values too.** A
+``PMIX_QUALIFIED_VALUE`` is stored under that one key with the real key
+and its qualifiers inside, so a tombstone matched only against the stored
+key never removed one. ``drop_tombstoned()`` looks inside a qualified
+value and removes it on the same terms ``gds/hash``'s delete does.
 
 Both ends advance ``job->modex_generation``, and only the server's names
 anything. It was introduced as a server-side counter naming the next
@@ -1202,10 +1349,24 @@ non-valid rank go to ``chain_fetch_nodeinfo()`` /
 ``chain_fetch_appinfo()``, which consult every job segment, since an
 addition published later carries its own lists.
 
-**e. Choose the store.** ``PMIX_INTERNAL``, ``PMIX_LOCAL``,
-``PMIX_GLOBAL``, ``PMIX_SCOPE_UNDEF`` and any wildcard-rank request read
-the **job** chain; ``PMIX_REMOTE`` reads the **modex** chain. Anything
-else is ``PMIX_ERR_BAD_PARAM``.
+**e. A get of another process's data.** When the fetch answers a
+``PMIx_Get`` from a process of the job (its ``visibility`` argument is
+set), ``visible_fetch()`` answers and the steps below are not reached.
+It first refuses a scope that contradicts where the target is. For a
+target on the reader's node it then reads the **local** chain, and for
+any other target the **modex** chain, after the job chain for an unscoped
+or ``PMIX_GLOBAL`` get. A target whose node is not known is read from
+both, as before the rules existed. For ``PMIX_RANK_UNDEF`` it does this
+rank by rank in ascending order and returns the first rank that answers.
+A miss is returned to the caller, which asks the server. What it may
+return is set out in :doc:`data_scope`. The steps below are what every
+other fetch does: the library's own reads and the host's.
+
+**e2. Choose the store.** ``PMIX_INTERNAL``, ``PMIX_SCOPE_UNDEF`` and any
+wildcard-rank request read the **job** chain. ``PMIX_LOCAL`` reads the
+**local** chain and ``PMIX_REMOTE`` the **modex** chain, after the job
+chain. ``PMIX_GLOBAL`` reads all three. Anything else is
+``PMIX_ERR_BAD_PARAM``.
 
 **f. The lookup (label ``doover``).** For ``PMIX_RANK_UNDEF`` the fetch
 sweeps ranks ``0..nprocs-1``; a keyed request returns at the first hit.
@@ -1412,6 +1573,14 @@ so it is not even compiled there.
   segment, the second that a session update reaches a running client.
 * ``test/unit/get_api.c`` holds the ``PMIX_RANK_UNDEF`` behavior
   described in step 8f directly, from a real client.
+* ``test/unit/run_getscope.pl`` drives ``examples/get_scope`` on one
+  node, and on Linux that reads the local chain: the scope tables, the
+  legacy ``NULL``-proc reads, a cpuset value left out of the segment, a
+  ``NULL``-key get of the rank it was left out for, a key overwritten
+  between fences, and many fences in a row. It runs once with the server
+  completing the fence itself and once through the host, so the local
+  chain is read both with and without a modex chain beside it. The swarm
+  suite runs the same program across two nodes.
 * ``test/unit/util/util_vmem.c`` pins the placement and scatter
   properties against the placement function, where they are decidable —
   ASLR hides them in any live test.

@@ -638,6 +638,13 @@ job_construct(
     job->modex_scale = 1;
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
+    // Local chain
+    job->local_shmem3_status = 0;
+    job->local_shmem3 = PMIX_NEW(pmix_shmem_t);
+    job->smlocal = NULL;
+    job->local_generation = 0;
+    atomic_init(&job->local_chain, NULL);
+    job->local_pending = NULL;
     job->job_generation = 0;
     atomic_init(&job->job_chain, NULL);
     atomic_init(&job->modex_chain, NULL);
@@ -661,6 +668,8 @@ get_shmem3_id_name(
             return "smdata";
         case PMIX_GDS_SHMEM3_MODEX_ID:
             return "smmodex";
+        case PMIX_GDS_SHMEM3_LOCAL_ID:
+            return "smlocal";
         case PMIX_GDS_SHMEM3_SESSION_ID:
             return "smsession";
         case PMIX_GDS_SHMEM3_INVALID_ID:
@@ -726,6 +735,28 @@ release_modex_build(
     job->modex_shmem3_status = 0;
 }
 
+/* The local chain's build slot - see release_modex_build(). */
+static void
+release_local_build(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (NULL == job->local_shmem3) {
+        return;
+    }
+    if (NULL != job->smlocal &&
+        (job->local_shmem3_status & PMIX_GDS_SHMEM3_MINE)) {
+        emit_segment_usage_stats(
+            job->local_shmem3, &job->smlocal->tma,
+            get_shmem3_id_name(PMIX_GDS_SHMEM3_LOCAL_ID)
+        );
+        PMIX_RELEASE(job->smlocal->tma.data_context);
+    }
+    PMIX_RELEASE(job->local_shmem3);
+    job->local_shmem3 = NULL;
+    job->smlocal = NULL;
+    job->local_shmem3_status = 0;
+}
+
 static void
 job_destruct(
     pmix_gds_shmem3_job_t *job
@@ -748,6 +779,11 @@ job_destruct(
      * does for the current one. */
     pmix_gds_shmem3_chain_destruct(&job->job_chain);
     pmix_gds_shmem3_chain_destruct(&job->modex_chain);
+    pmix_gds_shmem3_chain_destruct(&job->local_chain);
+    if (NULL != job->local_pending) {
+        PMIx_Argv_free(job->local_pending);
+        job->local_pending = NULL;
+    }
     /* Nothing can still be reading these - we are the destructor, and a
      * reader holds a reference on this tracker. */
     {
@@ -791,6 +827,7 @@ job_destruct(
      * What is left is the modex BUILD slot - a generation that was being
      * assembled when this job went away and was never published. */
     release_modex_build(job);
+    release_local_build(job);
 
     /* The arena goes last: releasing it unmaps everything inside it, so
      * every segment that was carved from it has to have let go first.
@@ -842,6 +879,7 @@ pmix_gds_shmem3_seg_release(
                             seg->smdata)->tma;
                     break;
                 case PMIX_GDS_SHMEM3_MODEX_ID:
+                case PMIX_GDS_SHMEM3_LOCAL_ID:
                     tma = &((pmix_gds_shmem3_shared_modex_data_t *)
                             seg->smdata)->tma;
                     break;
@@ -913,6 +951,49 @@ publish_modex_generation(
     job->smmodex = NULL;
     pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
     return PMIX_SUCCESS;
+}
+
+/**
+ * Publish the local generation just built - same discipline as
+ * publish_modex_generation(). Both ends call it: the server once a build
+ * is whole, a client once it has attached one.
+ */
+static pmix_status_t
+publish_local_generation(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (!pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_LOCAL_ID,
+                                    PMIX_GDS_SHMEM3_ATTACHED)) {
+        return PMIX_SUCCESS;
+    }
+    pmix_gds_shmem3_seg_t *seg = pmix_calloc(1, sizeof(*seg));
+    if (PMIX_UNLIKELY(NULL == seg)) {
+        return PMIX_ERR_NOMEM;
+    }
+    seg->smid = PMIX_GDS_SHMEM3_LOCAL_ID;
+    seg->status = job->local_shmem3_status;
+    seg->shmem3 = job->local_shmem3;
+    seg->smdata = job->smlocal;
+    seg->generation = job->local_generation;
+
+    pmix_gds_shmem3_chain_publish(&job->local_chain, seg);
+
+    job->local_shmem3 = PMIX_NEW(pmix_shmem_t);
+    job->smlocal = NULL;
+    pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_LOCAL_ID);
+    return PMIX_SUCCESS;
+}
+
+/* Note that this job is about to take on a new local generation - see
+ * advance_modex_generation(). The first one is generation zero. */
+static void
+advance_local_generation(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (NULL != pmix_gds_shmem3_chain_head(&job->local_chain)) {
+        atomic_fetch_add_explicit(&job->local_generation, 1,
+                                  memory_order_relaxed);
+    }
 }
 
 /**
@@ -1253,8 +1334,9 @@ out:
 }
 
 static pmix_status_t
-modex_smdata_construct(
-    pmix_gds_shmem3_job_t *job,
+shared_modex_construct(
+    pmix_shmem_t *shm,
+    pmix_gds_shmem3_shared_modex_data_t **out,
     size_t htsize,
     size_t nkeys
 ) {
@@ -1262,31 +1344,33 @@ modex_smdata_construct(
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // job know about its data located at the base of the segment.
-    const size_t smmodex_size = sizeof(*job->smmodex);
-    void *const baseaddr = job->modex_shmem3->data_address;
+    pmix_gds_shmem3_shared_modex_data_t *sm = shm->data_address;
+    const size_t sm_size = sizeof(*sm);
+    void *const baseaddr = shm->data_address;
 
-    job->smmodex = baseaddr;
-    memset(job->smmodex, 0, smmodex_size);
+    *out = sm;
+    memset(sm, 0, sm_size);
     // Save the starting address for TMA memory allocations.
-    job->smmodex->current_addr = baseaddr;
+    sm->current_addr = baseaddr;
     // Setup the TMA.
-    tma_init(job->modex_shmem3, &job->smmodex->tma, &job->smmodex->current_addr);
+    tma_init(shm, &sm->tma, &sm->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
-    tma_set_curraddr(&job->smmodex->tma, addr_align(baseaddr, smmodex_size));
+    tma_set_curraddr(&sm->tma, addr_align(baseaddr, sm_size));
     // We can now safely get our TMA.
-    pmix_tma_t *const tma = &job->smmodex->tma;
+    pmix_tma_t *const tma = &sm->tma;
     // Nothing reads this segment until it is published, so running out of
-    // room is answered by building a larger one - see server_store_modex().
+    // room is answered by building a larger one - see server_store_modex()
+    // and server_build_local().
     tma_get_alloc_ctx(tma)->recoverable = true;
     // Now that we know the TMA, initialize smdata structures using it.
-    job->smmodex->hashtab = PMIX_NEW(pmix_hash_table_t, tma);
-    if (!job->smmodex->hashtab) {
+    sm->hashtab = PMIX_NEW(pmix_hash_table_t, tma);
+    if (!sm->hashtab) {
         rc = PMIX_ERR_NOMEM;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    rc = pmix_hash_table_init(job->smmodex->hashtab, htsize);
+    rc = pmix_hash_table_init(sm->hashtab, htsize);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -1296,22 +1380,33 @@ modex_smdata_construct(
     // translation, and the translation cannot be the process-global one
     // because clients do not share our numbering. Build it here, in the
     // segment, so it travels with the data it describes.
-    job->smmodex->keyindex = PMIX_NEW(pmix_keyindex_t, tma);
-    if (!job->smmodex->keyindex) {
+    sm->keyindex = PMIX_NEW(pmix_keyindex_t, tma);
+    if (!sm->keyindex) {
         rc = PMIX_ERR_NOMEM;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* Sized to this segment's own key count - see the note in
      * job_smdata_construct(). */
-    rc = pmix_keyindex_init(job->smmodex->keyindex, nkeys);
+    rc = pmix_keyindex_init(sm->keyindex, nkeys);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    return rc;
+}
 
-    pmix_gds_shmem3_vout_smmodex(job);
-
+static pmix_status_t
+modex_smdata_construct(
+    pmix_gds_shmem3_job_t *job,
+    size_t htsize,
+    size_t nkeys
+) {
+    pmix_status_t rc = shared_modex_construct(job->modex_shmem3, &job->smmodex,
+                                              htsize, nkeys);
+    if (PMIX_SUCCESS == rc) {
+        pmix_gds_shmem3_vout_smmodex(job);
+    }
     return rc;
 }
 
@@ -1755,6 +1850,9 @@ init_client_side_sm_data(
             job->smmodex = job->modex_shmem3->data_address;
             pmix_gds_shmem3_vout_smmodex(job);
             break;
+        case PMIX_GDS_SHMEM3_LOCAL_ID:
+            job->smlocal = job->local_shmem3->data_address;
+            break;
         case PMIX_GDS_SHMEM3_INVALID_ID:
         default:
             PMIX_ERROR_LOG(PMIX_ERROR);
@@ -1771,6 +1869,9 @@ init_client_side_sm_data(
      * described only by the build fields, which no reader consults. */
     if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
         return publish_modex_generation(job);
+    }
+    if (PMIX_GDS_SHMEM3_LOCAL_ID == shmem3_id) {
+        return publish_local_generation(job);
     }
     if (PMIX_GDS_SHMEM3_SESSION_ID == shmem3_id) {
         return pmix_gds_shmem3_publish_session_segment(job->session);
@@ -1959,6 +2060,9 @@ arena_reserve(
     if (0 == slots) {
         return;
     }
+    /* The local chain takes its generations from the same slots, so
+     * reserve as many again for it. The reservation commits no memory. */
+    slots *= 2;
     if (slots > 32) {
         slots = 32;
     }
@@ -2088,9 +2192,17 @@ arena_alloc_modex(
         return false;
     }
 
+    /* The local chain draws on the same slots - see "Local data" in
+     * shmem3.rst - so both chains and both build slots are occupancy. */
     note_slot_in_use(job, job->modex_shmem3, &inuse);
     for (pmix_gds_shmem3_seg_t *seg =
              pmix_gds_shmem3_chain_head(&job->modex_chain);
+         NULL != seg; seg = seg->prior) {
+        note_slot_in_use(job, seg->shmem3, &inuse);
+    }
+    note_slot_in_use(job, job->local_shmem3, &inuse);
+    for (pmix_gds_shmem3_seg_t *seg =
+             pmix_gds_shmem3_chain_head(&job->local_chain);
          NULL != seg; seg = seg->prior) {
         note_slot_in_use(job, seg->shmem3, &inuse);
     }
@@ -2178,6 +2290,7 @@ shmem3_segment_create_and_attach(
             from_arena = false;
             break;
         case PMIX_GDS_SHMEM3_MODEX_ID:
+        case PMIX_GDS_SHMEM3_LOCAL_ID:
             from_arena = arena_alloc_modex(job, mapped_size, &arena_addr);
             break;
         default:
@@ -2585,9 +2698,10 @@ pack_shmem3_connection_info(
         /* a named segment on a chain - see pack_shmem3_seg_blob() */
         shmem3 = which->shmem3;
     }
-    else if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
-        pmix_gds_shmem3_seg_t *const head =
-            pmix_gds_shmem3_chain_head(&job->modex_chain);
+    else if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id ||
+             PMIX_GDS_SHMEM3_LOCAL_ID == shmem3_id) {
+        pmix_gds_shmem3_seg_t *const head = pmix_gds_shmem3_chain_head(
+            (PMIX_GDS_SHMEM3_LOCAL_ID == shmem3_id) ? &job->local_chain : &job->modex_chain);
         if (PMIX_UNLIKELY(NULL == head)) {
             rc = PMIX_ERR_NOT_FOUND;
             PMIX_ERROR_LOG(rc);
@@ -2760,7 +2874,8 @@ pack_shmem3_connection_info(
             PMIX_ERROR_LOG(rc);
             break;
         }
-        if (PMIX_GDS_SHMEM3_MODEX_ID != shmem3_id) {
+        if (PMIX_GDS_SHMEM3_MODEX_ID != shmem3_id &&
+            PMIX_GDS_SHMEM3_LOCAL_ID != shmem3_id) {
             break;
         }
         PMIX_DESTRUCT(&kv);
@@ -3239,6 +3354,18 @@ pack_shmem3_seg_blob(
             peer, reply
         );
     }
+    /* The local chain ships whole, oldest first, like the job's: every
+     * generation carries only what was committed since the one before,
+     * so a client needs all of them, and one that missed a generation -
+     * or attaches late - picks it up on the next delivery. A client skips
+     * what it already holds, by path. */
+    if (PMIX_GDS_SHMEM3_LOCAL_ID == shmem3_id) {
+        return pack_seg_chain(
+            job, shmem3_id,
+            pmix_gds_shmem3_chain_head(&job->local_chain),
+            peer, reply
+        );
+    }
     /* The job's data is a chain too - a host adding to it after the job
      * was registered publishes a segment carrying what is new - so ship
      * all of it, oldest first. */
@@ -3318,6 +3445,16 @@ cache_connection_info_for_job_shmem3(
     // First for the job.
     rc = pack_shmem3_seg_blob(
         job, PMIX_GDS_SHMEM3_JOB_ID, me, job->conni
+    );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    // The local chain, ahead of the tombstones: a tombstone is dated
+    // against the local generations its receiver holds when it records
+    // it, so they have to be in place first or it shadows none of them.
+    rc = pack_shmem3_seg_blob(
+        job, PMIX_GDS_SHMEM3_LOCAL_ID, me, job->conni
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -3493,7 +3630,8 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
          * heard of is one we have no use for by construction. */
         if (PMIX_GDS_SHMEM3_JOB_ID != usb.smid &&
             PMIX_GDS_SHMEM3_SESSION_ID != usb.smid &&
-            PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
+            PMIX_GDS_SHMEM3_MODEX_ID != usb.smid &&
+            PMIX_GDS_SHMEM3_LOCAL_ID != usb.smid) {
             PMIX_GDS_SHMEM3_VOUT(
                 "%s: ignoring seg blob for unrecognized segment id=%u",
                 __func__, (unsigned)usb.smid
@@ -3579,6 +3717,9 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
             pmix_gds_shmem3_seg_t *seg = NULL;
             if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
                 seg = pmix_gds_shmem3_chain_head(&job->modex_chain);
+            }
+            else if (PMIX_GDS_SHMEM3_LOCAL_ID == usb.smid) {
+                seg = pmix_gds_shmem3_chain_head(&job->local_chain);
             }
             else if (PMIX_GDS_SHMEM3_JOB_ID == usb.smid) {
                 seg = pmix_gds_shmem3_chain_head(&job->job_chain);
@@ -3673,7 +3814,8 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
         if (UINT32_MAX != usb.generation &&
             PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
             pmix_gds_shmem3_chain_t *const chain =
-                (PMIX_GDS_SHMEM3_SESSION_ID == usb.smid && NULL != job->session)
+                (PMIX_GDS_SHMEM3_LOCAL_ID == usb.smid) ? &job->local_chain
+                : (PMIX_GDS_SHMEM3_SESSION_ID == usb.smid && NULL != job->session)
                     ? &job->session->segments : &job->job_chain;
             pmix_gds_shmem3_seg_t *const head =
                 pmix_gds_shmem3_chain_head(chain);
@@ -3687,6 +3829,15 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                     (unsigned)usb.generation, usb.nsid,
                     (unsigned)head->generation
                 );
+                /* A local generation declined costs only speed: the keys
+                 * it carried miss and are asked of the server, and a key
+                 * it replaced was withdrawn when it was committed (see
+                 * server_local_committed()). Nothing older can answer
+                 * wrongly, so the realm stays readable. */
+                if (PMIX_GDS_SHMEM3_LOCAL_ID == usb.smid) {
+                    rc = PMIX_SUCCESS;
+                    break;
+                }
                 if (PMIX_GDS_SHMEM3_SESSION_ID == usb.smid) {
                     if (NULL != job->session) {
                         job->session->chain_incomplete = true;
@@ -3700,6 +3851,19 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
             }
         }
 
+        /* A local generation takes the server's number, which the blob
+         * carries: it is what orders the chain (the refusal above) and
+         * what a tombstone is dated against (pmix_gds_shmem3_local_count),
+         * and a client that declined or missed one must not let its own
+         * count fall behind the server's. */
+        if (PMIX_GDS_SHMEM3_LOCAL_ID == usb.smid) {
+            if (UINT32_MAX != usb.generation) {
+                atomic_store_explicit(&job->local_generation, usb.generation,
+                                      memory_order_relaxed);
+            } else {
+                advance_local_generation(job);
+            }
+        }
         // Looks like we have to attach and initialize it.
         rc = shmem3_segment_attach_and_init(job, &usb, ctx);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -3739,7 +3903,8 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                 if (NULL != job->session) {
                     job->session->chain_incomplete = false;
                 }
-            } else if (PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
+            } else if (PMIX_GDS_SHMEM3_MODEX_ID != usb.smid &&
+                       PMIX_GDS_SHMEM3_LOCAL_ID != usb.smid) {
                 job->chain_incomplete = false;
             }
         }
@@ -4014,6 +4179,7 @@ del_key(
     }
     const uint32_t generation =
         atomic_load_explicit(&job->modex_generation, memory_order_relaxed);
+    const uint32_t local_generation = pmix_gds_shmem3_local_count(job);
 
     /* Already shadowed at or past this generation? Then recording it
      * again would not change any answer - tombstoned() is satisfied by
@@ -4028,7 +4194,8 @@ del_key(
     for (t = atomic_load_explicit(&job->tombstones, memory_order_acquire);
          NULL != t; t = t->prior) {
         if (t->rank == proc->rank && NULL != t->key &&
-            0 == strcmp(t->key, key) && generation <= t->generation) {
+            0 == strcmp(t->key, key) && generation <= t->generation &&
+            local_generation <= t->local_generation) {
             return PMIX_SUCCESS;
         }
     }
@@ -4043,6 +4210,7 @@ del_key(
         return PMIX_ERR_NOMEM;
     }
     t->generation = generation;
+    t->local_generation = local_generation;
     /* Complete before it is published; the release-store is what makes
      * that so for the reader that acquire-loads the head. */
     t->prior = atomic_load_explicit(&job->tombstones, memory_order_relaxed);
@@ -4224,6 +4392,25 @@ server_store_modex_cb(pmix_proc_t *proc,
             }
             pmix_server_notify_deleted(&dproc, PMIX_DEL_REMOTE, kv.key, NULL);
         }
+        if (pmix_gds_shmem3_hold_back(kv.value)) {
+            /* Its payload lives outside the value, so it cannot be
+             * shared (pmix_gds_shmem3_segment_can_hold). The segment is
+             * the only copy of a modex this server holds, so keep this
+             * one in our own datastore, where a client that misses it in
+             * the segment is answered from. */
+            pmix_proc_t hproc;
+            pmix_status_t hrc;
+
+            PMIX_LOAD_PROCID(&hproc, proc->nspace,
+                             (PMIX_RANK_UNDEF == rank) ? 0 : rank);
+            PMIX_GDS_STORE_KV(hrc, pmix_globals.mypeer, &hproc, PMIX_REMOTE, &kv);
+            if (PMIX_SUCCESS != hrc) {
+                PMIX_ERROR_LOG(hrc);
+            }
+            job->smmodex->incomplete = true;
+            PMIX_DESTRUCT(&kv);
+            continue;
+        }
         if (PMIX_CHECK_KEY(&kv, PMIX_QUALIFIED_VALUE)) {
             rc = pmix_gds_shmem3_store_qualified(
                 ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv.value,
@@ -4374,6 +4561,420 @@ server_store_modex(pmix_buffer_t *buff,
     return rc;
 }
 
+/* ------------------------------------------------------------------
+ * The local chain - see "Local data" in docs/how-things-work/shmem3.rst.
+ *
+ * What the server's own clients put at PMIX_LOCAL and PMIX_GLOBAL scope,
+ * shared with them the way the modex is: a chain of generations, each a
+ * segment written once and never again, built at a fence and carrying
+ * only what was committed since the previous one. A same-node target is
+ * read from here and never from the modex, whose copy of a process's
+ * data is the one it posted for OTHER nodes.
+ * ------------------------------------------------------------------ */
+
+/* The key a pending entry and a stored value are matched by. A qualified
+ * value is committed, stored and fetched under PMIX_QUALIFIED_VALUE with
+ * its real key inside - see pmix_hash.c. */
+static const char *
+local_real_key(
+    const pmix_kval_t *kv,
+    pmix_info_t **quals,
+    size_t *nquals
+) {
+    pmix_info_t *info;
+    size_t ninfo;
+
+    *quals = NULL;
+    *nquals = 0;
+    if (NULL == kv || NULL == kv->key) {
+        return NULL;
+    }
+    if (!PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+        return kv->key;
+    }
+    if (!pmix_gds_base_info_array(kv->value, &info, &ninfo) || 0 == ninfo) {
+        return NULL;
+    }
+    *quals = (1 < ninfo) ? &info[1] : NULL;
+    *nquals = ninfo - 1;
+    return info[0].key;
+}
+
+/* Does a published local generation of this job hold this value? */
+static bool
+local_chain_holds(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    const char *key,
+    pmix_info_t *quals,
+    size_t nquals
+) {
+    for (pmix_gds_shmem3_seg_t *seg = pmix_gds_shmem3_chain_head(&job->local_chain);
+         NULL != seg; seg = seg->prior) {
+        pmix_gds_shmem3_shared_modex_data_t *const sm = seg->smdata;
+        pmix_list_t kvs;
+        bool found;
+
+        if (NULL == sm || NULL == sm->hashtab) {
+            continue;
+        }
+        PMIX_CONSTRUCT(&kvs, pmix_list_t);
+        found = (PMIX_SUCCESS == pmix_hash_fetch(sm->hashtab, rank, key, quals, nquals,
+                                                 &kvs, sm->keyindex)) &&
+                0 < pmix_list_get_size(&kvs);
+        PMIX_LIST_DESTRUCT(&kvs);
+        if (found) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* A local client committed a value at PMIX_LOCAL or PMIX_GLOBAL scope,
+ * and it is in our own store.
+ *
+ * Record it for the next local generation. And if a generation already
+ * published holds the key, that copy is now stale - and stays readable
+ * until the next fence publishes the new value. So withdraw it: a
+ * tombstone here (which dates it against the generations already
+ * published, so the next one is not shadowed), and the same notice a
+ * delete sends to every other local client, which records its own
+ * tombstone and drops any copy of the key it had cached. Their next read
+ * misses and asks us, and we have the new value.
+ *
+ * The committing client itself is not told: its own data is read from
+ * its own store, never from a shared chain, and the notice would remove
+ * the value it just put there. */
+static pmix_status_t
+server_local_committed(
+    struct pmix_namespace_t *ns,
+    struct pmix_peer_t *pr,
+    const pmix_proc_t *proc,
+    const pmix_kval_t *kv
+) {
+    pmix_namespace_t *nptr = (pmix_namespace_t *) ns;
+    pmix_gds_shmem3_job_t *job;
+    pmix_info_t *quals;
+    size_t nquals;
+    const char *rkey;
+    char *entry = NULL;
+
+    if (NULL == nptr || NULL == proc || NULL == kv || NULL == kv->key) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS != pmix_gds_shmem3_get_job_tracker(nptr->nspace, false, &job)) {
+        return PMIX_SUCCESS;
+    }
+    if (0 > pmix_asprintf(&entry, "%u:%s", (unsigned) proc->rank, kv->key)) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 > PMIx_Argv_idx(job->local_pending, entry)) {
+        if (PMIX_SUCCESS != PMIx_Argv_append_nosize(&job->local_pending, entry)) {
+            free(entry);
+            return PMIX_ERR_NOMEM;
+        }
+    }
+    free(entry);
+
+    rkey = local_real_key(kv, &quals, &nquals);
+    if (NULL == rkey || !local_chain_holds(job, proc->rank, rkey, quals, nquals)) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_GDS_SHMEM3_VOUT("%s: %s replaced key=%s a local generation holds; withdrawing it",
+                         __func__, PMIX_NAME_PRINT(proc), rkey);
+    (void) del_key(proc, rkey);
+    pmix_server_notify_deleted(proc, PMIX_DEL_LOCAL, rkey, (pmix_peer_t *) pr);
+    return PMIX_SUCCESS;
+}
+
+/* Is "rank:key" pending? */
+static bool
+local_is_pending(
+    char **pending,
+    pmix_rank_t rank,
+    const char *key
+) {
+    char *entry = NULL;
+    bool found;
+
+    if (NULL == key || 0 > pmix_asprintf(&entry, "%u:%s", (unsigned) rank, key)) {
+        return false;
+    }
+    found = (0 <= PMIx_Argv_idx(pending, entry));
+    free(entry);
+    return found;
+}
+
+/* One rank's pending values, fetched from our own store. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_rank_t rank;
+    pmix_list_t kvs;
+} local_rank_kvs_t;
+static void lrkcon(local_rank_kvs_t *p)
+{
+    p->rank = PMIX_RANK_INVALID;
+    PMIX_CONSTRUCT(&p->kvs, pmix_list_t);
+}
+static void lrkdes(local_rank_kvs_t *p)
+{
+    PMIX_LIST_DESTRUCT(&p->kvs);
+}
+static PMIX_CLASS_INSTANCE(local_rank_kvs_t, pmix_list_item_t, lrkcon, lrkdes);
+
+/* Gather what the pending record names: each rank's PMIX_LOCAL-scope
+ * data in our store - which, PMIX_GLOBAL data being stored at both
+ * scopes, includes its PMIX_GLOBAL data - kept to the keys it committed
+ * since the last generation. A key deleted since it was committed is
+ * simply not there any more. */
+static pmix_status_t
+local_gather(
+    pmix_gds_shmem3_job_t *job,
+    pmix_list_t *ranks,
+    size_t *nkeys,
+    size_t *nbytes
+) {
+    pmix_buffer_t sizer;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    *nkeys = 0;
+    *nbytes = 0;
+    PMIX_CONSTRUCT(&sizer, pmix_buffer_t);
+    for (size_t n = 0; NULL != job->local_pending[n]; n++) {
+        char *end = NULL;
+        const unsigned long r = strtoul(job->local_pending[n], &end, 10);
+        local_rank_kvs_t *lrk;
+        bool seen = false;
+        pmix_proc_t proc;
+        pmix_cb_t cb;
+        pmix_kval_t *kv;
+
+        if (NULL == end || ':' != *end || r >= PMIX_RANK_VALID) {
+            continue;
+        }
+        PMIX_LIST_FOREACH (lrk, ranks, local_rank_kvs_t) {
+            if (lrk->rank == (pmix_rank_t) r) {
+                seen = true;
+                break;
+            }
+        }
+        if (seen) {
+            continue;
+        }
+        lrk = PMIX_NEW(local_rank_kvs_t);
+        if (NULL == lrk) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        lrk->rank = (pmix_rank_t) r;
+        pmix_list_append(ranks, &lrk->super);
+
+        PMIX_LOAD_PROCID(&proc, job->nspace_id, lrk->rank);
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &proc;
+        cb.key = NULL;
+        cb.scope = PMIX_LOCAL;
+        cb.copy = true;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        rc = PMIX_SUCCESS;
+        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
+            if (!local_is_pending(job->local_pending, lrk->rank, kv->key)) {
+                PMIX_RELEASE(kv);
+                continue;
+            }
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &sizer, kv, 1, PMIX_KVAL);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(kv);
+                break;
+            }
+            *nkeys += 1;
+            pmix_list_append(&lrk->kvs, &kv->super);
+        }
+        PMIX_DESTRUCT(&cb);
+        if (PMIX_SUCCESS != rc) {
+            break;
+        }
+    }
+    *nbytes = sizer.bytes_used;
+    PMIX_DESTRUCT(&sizer);
+    return rc;
+}
+
+static inline bool
+local_build_exhausted(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (NULL == job->smlocal || NULL == job->smlocal->tma.data_context) {
+        return false;
+    }
+    return tma_get_alloc_ctx(&job->smlocal->tma)->exhausted;
+}
+
+/* Write one generation from the gathered values, in a segment sized
+ * "scale" times the estimate. */
+static pmix_status_t
+local_write(
+    pmix_gds_shmem3_job_t *job,
+    pmix_list_t *ranks,
+    size_t nkeys,
+    size_t nbytes,
+    size_t scale
+) {
+    const size_t nranks = pmix_list_get_size(ranks);
+    local_rank_kvs_t *lrk;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    size_t seg_size;
+
+    /* The same terms as the modex estimate, with the payload in hand
+     * rather than guessed: the table and its per-rank structures, the key
+     * index and the key strings it copies, and the values themselves. */
+    seg_size = sizeof(pmix_gds_shmem3_shared_modex_data_t);
+    seg_size += sizeof(pmix_hash_table_t);
+    seg_size += pmix_hash_table_sizeof_storage(nranks);
+    seg_size += nranks * pmix_hash_sizeof_proc_storage();
+    seg_size += pmix_keyindex_sizeof_storage(nkeys);
+    seg_size += nkeys * (sizeof(pmix_kval_t) + sizeof(pmix_value_t)
+                         + pmix_hash_sizeof_key_entry(0));
+    seg_size += 5 * nbytes;
+    seg_size *= 4;
+    seg_size *= pmix_gds_shmem3_segment_size_multiplier;
+    if (seg_size > SIZE_MAX / scale) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    seg_size *= scale;
+
+    char segname[PMIX_PATH_MAX];
+    snprintf(segname, sizeof(segname), "localdata.%u", job->local_generation);
+    rc = shmem3_segment_create_and_attach(job, PMIX_GDS_SHMEM3_LOCAL_ID, segname, seg_size,
+                                          PMIX_GDS_SHMEM3_ATTACH_UPDATE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    rc = shared_modex_construct(job->local_shmem3, &job->smlocal, nranks, nkeys);
+    if (local_build_exhausted(job)) {
+        return PMIX_ERR_SILENT;
+    }
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    PMIX_LIST_FOREACH (lrk, ranks, local_rank_kvs_t) {
+        PMIX_LIST_FOREACH (kv, &lrk->kvs, pmix_kval_t) {
+            if (pmix_gds_shmem3_hold_back(kv->value)) {
+                /* stays in our own store, which answers for it - see
+                 * pmix_gds_shmem3_segment_can_hold() */
+                job->smlocal->incomplete = true;
+                continue;
+            }
+            if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+                rc = pmix_gds_shmem3_store_qualified(job->smlocal->hashtab, lrk->rank,
+                                                     kv->value, job->smlocal->keyindex);
+            } else {
+                rc = pmix_hash_store(job->smlocal->hashtab, lrk->rank, kv, NULL, 0,
+                                     job->smlocal->keyindex);
+            }
+            if (local_build_exhausted(job)) {
+                return PMIX_ERR_SILENT;
+            }
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        }
+    }
+    pmix_gds_shmem3_set_status(job, PMIX_GDS_SHMEM3_LOCAL_ID, PMIX_GDS_SHMEM3_READY_FOR_USE);
+    return PMIX_SUCCESS;
+}
+
+/* A fence over this namespace has completed. Publish what its local
+ * clients committed since the last local generation, as a new one - or
+ * nothing, when nothing was. See PMIX_GDS_BUILD_LOCAL in gds.h. */
+static pmix_status_t
+server_build_local(
+    struct pmix_namespace_t *ns
+) {
+    pmix_namespace_t *nptr = (pmix_namespace_t *) ns;
+    pmix_gds_shmem3_job_t *job;
+    pmix_list_t ranks;
+    size_t nkeys, nbytes, scale;
+    pmix_status_t rc;
+
+    if (NULL == nptr ||
+        PMIX_SUCCESS != pmix_gds_shmem3_get_job_tracker(nptr->nspace, false, &job)) {
+        return PMIX_SUCCESS;
+    }
+    /* Not before the job segment exists: the arena it carves from is
+     * reserved with it, and a client has no tracker to attach to. The
+     * record is kept, and the next fence builds from it. */
+    if (NULL == job->local_pending ||
+        NULL == pmix_gds_shmem3_chain_head(&job->job_chain)) {
+        return PMIX_SUCCESS;
+    }
+
+    PMIX_CONSTRUCT(&ranks, pmix_list_t);
+    rc = local_gather(job, &ranks, &nkeys, &nbytes);
+    if (PMIX_SUCCESS != rc || 0 == nkeys) {
+        /* every pending key has been deleted since: nothing to publish */
+        PMIX_LIST_DESTRUCT(&ranks);
+        if (PMIX_SUCCESS == rc) {
+            PMIx_Argv_free(job->local_pending);
+            job->local_pending = NULL;
+        }
+        return rc;
+    }
+
+    const uint32_t generation =
+        atomic_load_explicit(&job->local_generation, memory_order_relaxed);
+    advance_local_generation(job);
+    /* Nothing can read the generation being built until it is published,
+     * so running out of room is answered as the modex answers it: give
+     * the segment back and build it again at twice the size. */
+    for (scale = 1;; scale *= 2) {
+        rc = local_write(job, &ranks, nkeys, nbytes, scale);
+        if (PMIX_ERR_SILENT != rc) {
+            break;
+        }
+        release_local_build(job);
+        job->local_shmem3 = PMIX_NEW(pmix_shmem_t);
+        if (NULL == job->local_shmem3 || scale > SIZE_MAX / 4) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            break;
+        }
+    }
+    PMIX_LIST_DESTRUCT(&ranks);
+    if (PMIX_SUCCESS == rc) {
+        rc = publish_local_generation(job);
+    }
+    if (PMIX_SUCCESS != rc) {
+        if (pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_LOCAL_ID,
+                                       PMIX_GDS_SHMEM3_ATTACHED)) {
+            release_local_build(job);
+        }
+        if (NULL == job->local_shmem3) {
+            job->local_shmem3 = PMIX_NEW(pmix_shmem_t);
+        }
+        /* nothing was published, so nothing took the number; the record
+         * is kept, so a reader misses and asks us, and the next fence
+         * tries again */
+        atomic_store_explicit(&job->local_generation, generation, memory_order_relaxed);
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    PMIx_Argv_free(job->local_pending);
+    job->local_pending = NULL;
+    /* the cached job-info reply describes the chain a client attaching now
+     * is given - it is out of date */
+    if (NULL != job->conni) {
+        PMIX_RELEASE(job->conni);
+        job->conni = NULL;
+    }
+    PMIX_GDS_SHMEM3_VOUT("%s: published local generation %u (%zu keys) for namespace=%s",
+                         __func__, job->local_generation, nkeys, job->nspace_id);
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t
 server_setup_fork(
     const pmix_proc_t *peer,
@@ -4505,6 +5106,14 @@ server_mark_modex_complete(
         // Pack modex info, if it is ready to be shared.
         rc = pack_shmem3_seg_blob(
             job, PMIX_GDS_SHMEM3_MODEX_ID, peer, reply
+        );
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        // And the local chain, which this fence may just have added to.
+        rc = pack_shmem3_seg_blob(
+            job, PMIX_GDS_SHMEM3_LOCAL_ID, peer, reply
         );
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
@@ -5246,6 +5855,12 @@ server_add_job_data(
 
     pmix_tma_t *const tma = &job->smdata->tma;
     for (size_t n = 0; n < nchanged; n++) {
+        if (pmix_gds_shmem3_hold_back(&changed[n].value)) {
+            /* stays in the server's own datastore, which has it - see
+             * pmix_gds_shmem3_segment_can_hold() */
+            job->smdata->incomplete = true;
+            continue;
+        }
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
         if (PMIX_UNLIKELY(NULL == kv)) {
             free(changed);
@@ -5321,7 +5936,9 @@ pmix_gds_base_module_t pmix_shmem3_module = {
     .assemb_kvs_req = NULL,
     .accept_kvs_resp = NULL,
     .mark_modex_complete = server_mark_modex_complete,
-    .recv_modex_complete = client_recv_modex_complete
+    .recv_modex_complete = client_recv_modex_complete,
+    .local_committed = server_local_committed,
+    .build_local = server_build_local
 };
 
 /*

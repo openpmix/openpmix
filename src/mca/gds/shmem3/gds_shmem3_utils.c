@@ -306,6 +306,9 @@ pmix_gds_shmem3_get_job_shmem3_by_id(
         case PMIX_GDS_SHMEM3_MODEX_ID:
             *shmem3 = job->modex_shmem3;
             break;
+        case PMIX_GDS_SHMEM3_LOCAL_ID:
+            *shmem3 = job->local_shmem3;
+            break;
         case PMIX_GDS_SHMEM3_INVALID_ID:
         default:
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -327,6 +330,8 @@ get_job_shmem3_status_flagp(
             return &job->session->shmem3_status;
         case PMIX_GDS_SHMEM3_MODEX_ID:
             return &job->modex_shmem3_status;
+        case PMIX_GDS_SHMEM3_LOCAL_ID:
+            return &job->local_shmem3_status;
         case PMIX_GDS_SHMEM3_INVALID_ID:
         default:
             // This is a fatal internal error.
@@ -369,6 +374,92 @@ pmix_gds_shmem3_has_status(
     pmix_gds_shmem3_status_flag_t flag
 ) {
     return (*get_job_shmem3_status_flagp(job, shmem3_id) & flag);
+}
+
+/* How many values pmix_gds_shmem3_hold_back() has kept out of segments.
+ * A builder compares it before and after it writes a segment and marks
+ * the segment incomplete if it moved. Segments are built only by the
+ * server, on its progress thread, so a plain counter is enough; it only
+ * ever grows, which makes a nested build (a session array inside a job's
+ * data) mark the outer segment too - conservative, never wrong. */
+static size_t heldback = 0;
+
+size_t
+pmix_gds_shmem3_heldback_count(void)
+{
+    return heldback;
+}
+
+bool
+pmix_gds_shmem3_hold_back(
+    const pmix_value_t *v
+) {
+    if (pmix_gds_shmem3_segment_can_hold(v)) {
+        return false;
+    }
+    heldback += 1;
+    return true;
+}
+
+/* Can this value live in a segment?
+ *
+ * A segment is read by other processes at the address the server wrote
+ * it, so everything a value reaches has to be inside the segment. Most
+ * types are copied whole by the segment's allocator. Three are not: a
+ * cpuset and a topology hold an hwloc object, and a data buffer its
+ * bytes, which their copy routines allocate from the copier's own heap
+ * whatever allocator they are handed. A reader dereferencing one gets an
+ * address in somebody else's process. Such a value is left out of the
+ * segment - it stays in the server's own datastore, which answers for it
+ * - and the segment is marked incomplete. Arrays are checked element by
+ * element, since one of those can sit inside an info or value array. */
+bool
+pmix_gds_shmem3_segment_can_hold(
+    const pmix_value_t *v
+) {
+    const pmix_data_array_t *d;
+    size_t n;
+
+    if (NULL == v) {
+        return true;
+    }
+    switch (v->type) {
+        case PMIX_PROC_CPUSET:
+        case PMIX_TOPO:
+        case PMIX_DATA_BUFFER:
+            return false;
+        case PMIX_DATA_ARRAY:
+            d = v->data.darray;
+            if (NULL == d || NULL == d->array) {
+                return true;
+            }
+            switch (d->type) {
+                case PMIX_PROC_CPUSET:
+                case PMIX_TOPO:
+                case PMIX_DATA_BUFFER:
+                    return 0 == d->size;
+                case PMIX_INFO:
+                    for (n = 0; n < d->size; n++) {
+                        if (!pmix_gds_shmem3_segment_can_hold(
+                                &((const pmix_info_t *) d->array)[n].value)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                case PMIX_VALUE:
+                    for (n = 0; n < d->size; n++) {
+                        if (!pmix_gds_shmem3_segment_can_hold(
+                                &((const pmix_value_t *) d->array)[n])) {
+                            return false;
+                        }
+                    }
+                    return true;
+                default:
+                    return true;
+            }
+        default:
+            return true;
+    }
 }
 
 /*
