@@ -52,6 +52,97 @@
  *  of our local clients                                                                           *
  ***************************************************************************************************/
 
+/* Answer a direct-modex request for one rank of a job we host: pack the
+ * target's PMIX_REMOTE and PMIX_GLOBAL data for the server that asked.
+ *
+ * The request may name the one key its reader needs (PMIX_REQUIRED_KEY,
+ * which pmix_server_get() adds to the request before handing it to its
+ * host). The target's first commit is not enough to answer that, because
+ * a target can commit more than once and the key may come later. So:
+ *
+ *  - the key is here at PMIX_REMOTE or PMIX_GLOBAL: answer;
+ *  - it is here only at PMIX_LOCAL: the reader is on another node and may
+ *    never see it, so say PMIX_ERR_EXISTS_OUTSIDE_SCOPE now rather than
+ *    leave it waiting for data that will not come (the requesting server
+ *    reports that to its client as PMIX_ERR_NOT_FOUND);
+ *  - it is not here at all: *wait is set, and the caller parks the
+ *    request until the target commits again.
+ *
+ * Reads the datastore as stored - this is not a PMIx_Get, and the reader
+ * is owed exactly the data the target posted for other nodes. */
+pmix_status_t pmix_server_dmodex_answer(const pmix_proc_t *proc,
+                                        const pmix_info_t *info, size_t ninfo,
+                                        char **data, size_t *sz, bool *wait)
+{
+    pmix_cb_t cb;
+    pmix_buffer_t pbkt;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    const char *required = NULL;
+    size_t n;
+
+    *data = NULL;
+    *sz = 0;
+    *wait = false;
+
+    for (n = 0; NULL != info && n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_REQUIRED_KEY) &&
+            PMIX_STRING == info[n].value.type && NULL != info[n].value.data.string) {
+            required = info[n].value.data.string;
+            break;
+        }
+    }
+
+    if (NULL != required) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = (pmix_proc_t *) proc;
+        cb.key = (char *) required;
+        cb.scope = PMIX_REMOTE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        PMIX_DESTRUCT(&cb);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            cb.proc = (pmix_proc_t *) proc;
+            cb.key = (char *) required;
+            cb.scope = PMIX_LOCAL;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            PMIX_DESTRUCT(&cb);
+            if (PMIX_SUCCESS == rc) {
+                return PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+            }
+            *wait = true;
+            return PMIX_ERR_NOT_FOUND;
+        }
+    }
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t *) proc;
+    cb.scope = PMIX_REMOTE;
+    cb.copy = true;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
+            /* we pack this in our native BFROPS form as it will be sent
+             * to another daemon. Every element is checked: a value that
+             * could not be packed must fail the answer, not leave the
+             * requesting server holding a short modex it cannot tell
+             * from a complete one */
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, kv, 1, PMIX_KVAL);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIX_UNLOAD_BUFFER(&pbkt, *data, *sz);
+        }
+        PMIX_DESTRUCT(&pbkt);
+    }
+    PMIX_DESTRUCT(&cb);
+    return rc;
+}
+
 static void _dmodex_req(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
@@ -206,27 +297,22 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         return;
     }
 
-    /* collect the remote/global data from this proc */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    cb.proc = &cd->proc;
-    cb.scope = PMIX_REMOTE;
-    cb.copy = true;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-    if (PMIX_SUCCESS == rc) {
-        /* assemble the provided data into a byte object */
-        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-        PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
-            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, kv, 1, PMIX_KVAL);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_DESTRUCT(&pbkt);
-                PMIX_DESTRUCT(&cb);
+    /* answer now, or park the request until the key it needs arrives */
+    {
+        bool wait;
+
+        rc = pmix_server_dmodex_answer(&cd->proc, cd->info, cd->ninfo, &data, &sz, &wait);
+        if (wait) {
+            dcd = PMIX_NEW(pmix_dmdx_remote_t);
+            if (NULL == dcd) {
+                rc = PMIX_ERR_NOMEM;
                 goto cleanup;
             }
+            dcd->cd = cd;
+            pmix_list_append(&pmix_server_globals.remote_pnd, &dcd->super);
+            return;
         }
-        PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
-        PMIX_DESTRUCT(&pbkt);
     }
-    PMIX_DESTRUCT(&cb);
 
 cleanup:
     /* execute the callback */

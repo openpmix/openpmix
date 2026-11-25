@@ -202,6 +202,35 @@ pmix_gds_shmem3_has_status(
     pmix_gds_shmem3_status_flag_t flag
 );
 
+/* How many local-chain generations this process holds: a tombstone
+ * recorded now shadows exactly those (local generations below this
+ * number), and none published after it. Counted rather than taken from
+ * a running number so that a tombstone recorded before the first local
+ * generation shadows nothing in it. */
+static inline uint32_t
+pmix_gds_shmem3_local_count(
+    pmix_gds_shmem3_job_t *job
+) {
+    pmix_gds_shmem3_seg_t *head = pmix_gds_shmem3_chain_head(&job->local_chain);
+    return (NULL == head) ? 0 : head->generation + 1;
+}
+
+/* Can this value be written into a segment? See the definition. */
+PMIX_EXPORT bool
+pmix_gds_shmem3_segment_can_hold(
+    const pmix_value_t *v
+);
+
+/* True if this value must be left out of the segment being written, in
+ * which case it is counted - see pmix_gds_shmem3_heldback_count(). */
+PMIX_EXPORT bool
+pmix_gds_shmem3_hold_back(
+    const pmix_value_t *v
+);
+
+PMIX_EXPORT size_t
+pmix_gds_shmem3_heldback_count(void);
+
 static inline pmix_tma_t *
 pmix_gds_shmem3_get_job_tma(
     pmix_gds_shmem3_job_t *job

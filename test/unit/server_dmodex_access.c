@@ -151,7 +151,7 @@ static pmix_peer_t *make_peer(const char *nsname, pmix_rank_t rank, uid_t uid, g
 typedef struct {
     pmix_proc_t proc;
     uint32_t uid, gid;
-    int nuid, ngid, nreq;
+    int nuid, ngid, nreq, nscope, nreqkey;
     pmix_proc_t requestor;
     pmix_modex_cbfunc_t cbfunc;
     void *cbdata;
@@ -182,6 +182,10 @@ static pmix_status_t stub_dmodex(const pmix_proc_t *proc, const pmix_info_t info
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_REQUESTOR)) {
             memcpy(&c->requestor, info[n].value.data.proc, sizeof(pmix_proc_t));
             c->nreq++;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_DATA_SCOPE)) {
+            c->nscope++;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_REQUIRED_KEY)) {
+            c->nreqkey++;
         }
     }
     c->cbfunc = cbfunc;
@@ -281,15 +285,17 @@ static pmix_server_caddy_t *make_caddy(pmix_peer_t *peer, getres_t *res)
 }
 
 /* a GET of DMX_KEY for nsname:rank, carrying a PMIX_USERID of its own */
-static pmix_status_t do_get(pmix_peer_t *peer, const char *nsname, pmix_rank_t rank,
-                            getres_t *res)
+/* a get as a client sends it; scope < 0 names no PMIX_DATA_SCOPE */
+static pmix_status_t do_get_scoped(pmix_peer_t *peer, const char *nsname, pmix_rank_t rank,
+                                   int scope, getres_t *res)
 {
     pmix_buffer_t *buf;
     pmix_server_caddy_t *cd;
-    pmix_info_t info;
+    pmix_info_t info[2];
     pmix_status_t rc;
-    size_t ninfo = 1;
+    size_t ninfo = (0 <= scope) ? 2 : 1;
     uint32_t claimed = 1;
+    pmix_scope_t sc = (pmix_scope_t) scope;
     char *cptr = (char *) nsname;
 
     memset(res, 0, sizeof(*res));
@@ -302,9 +308,18 @@ static pmix_status_t do_get(pmix_peer_t *peer, const char *nsname, pmix_rank_t r
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
     }
     if (PMIX_SUCCESS == rc) {
-        PMIX_INFO_LOAD(&info, PMIX_USERID, &claimed, PMIX_UINT32);
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
-        PMIX_INFO_DESTRUCT(&info);
+        /* the directives go out in ONE pack call, as a client sends
+         * them: packing them one at a time writes separate one-element
+         * arrays, and the server unpacks the second as a blank entry */
+        PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
+        if (0 <= scope) {
+            PMIX_INFO_LOAD(&info[1], PMIX_DATA_SCOPE, &sc, PMIX_SCOPE);
+        }
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, info, ninfo, PMIX_INFO);
+        PMIX_INFO_DESTRUCT(&info[0]);
+        if (0 <= scope) {
+            PMIX_INFO_DESTRUCT(&info[1]);
+        }
     }
     if (PMIX_SUCCESS == rc) {
         cptr = (char *) DMX_KEY;
@@ -323,6 +338,12 @@ static pmix_status_t do_get(pmix_peer_t *peer, const char *nsname, pmix_rank_t r
     }
     progress_barrier();
     return PMIX_SUCCESS;
+}
+
+static pmix_status_t do_get(pmix_peer_t *peer, const char *nsname, pmix_rank_t rank,
+                            getres_t *res)
+{
+    return do_get_scoped(peer, nsname, rank, -1, res);
 }
 
 static pmix_status_t do_refresh(pmix_peer_t *peer, const char *nsname)
@@ -421,6 +442,31 @@ static void test_requesting(pmix_peer_t *a0, pmix_peer_t *a1, pmix_peer_t *b0)
            PMIX_ERR_NOT_FOUND == rc);
 }
 
+/* The reader's PMIX_DATA_SCOPE is not handed to the host. A reader that
+ * needs a direct modex is on another node by definition, so the scope
+ * means nothing at the far end - and PRRTE checks for the key with a
+ * PMIx_Get using these directives, where PMIX_REMOTE can never find a key
+ * posted only at PMIX_LOCAL. That check polled until the reader timed
+ * out. What it needs is the key, so that is what goes up. */
+static void test_scope_not_forwarded(pmix_peer_t *a0)
+{
+    getres_t r;
+    pmix_status_t rc;
+
+    ncalls = 0;
+    rc = do_get_scoped(a0, NS_REMOTE, 1, PMIX_REMOTE, &r);
+    report("a scoped get for a rank hosted elsewhere goes to the host",
+           PMIX_SUCCESS == rc && 1 == ncalls && !r.fired);
+    report("the up-call names the key the reader needs",
+           1 == ncalls && 1 == calls[0].nreqkey);
+    report("and does not carry the reader's scope", 1 == ncalls && 0 == calls[0].nscope);
+    if (1 == ncalls) {
+        answer(&calls[0], PMIX_ERR_EXISTS_OUTSIDE_SCOPE);
+    }
+    report("a holder's outside-scope answer reaches the reader as not found",
+           r.fired && PMIX_ERR_NOT_FOUND == r.status);
+}
+
 static pmix_status_t dm_status;
 static bool dm_fired;
 static size_t dm_size;
@@ -516,6 +562,7 @@ int main(int argc, char **argv)
     b0 = make_peer(NS_B, 0, B_UID, B_GID);
 
     test_requesting(a0, a1, b0);
+    test_scope_not_forwarded(a0);
     test_holder();
 
     PMIX_RELEASE(a0);

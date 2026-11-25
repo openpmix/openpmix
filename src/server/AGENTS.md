@@ -1829,6 +1829,64 @@ that long, so what goes up is `lcd->info` - the tracker's own copy, which
 `pmix_server_get` augments in place with `PMIX_REQUIRED_KEY` - and never
 `cd->info`. `pmix_pending_nspace_requests` always did it this way.
 
+**A get is answered with only what the requester may see.** Every
+datastore fetch that answers a client's get - the probe in
+`pmix_server_get`, the two in `_satisfy_request`, and the cache refresh in
+`pmix_server_refresh_cache()` (`pmix_server_control.c`) - sets
+`pmix_cb_t.get_visibility`, so the module returns a same-node target's
+`PMIX_LOCAL`/`PMIX_GLOBAL` data and never its `PMIX_REMOTE` data (see
+"What a `PMIx_Get` may see" in [`../mca/gds/AGENTS.md`](../mca/gds/AGENTS.md)).
+That matters beyond the one reply. The client caches the whole reply with no
+scope, so anything extra sent here is what later unscoped gets return. The
+refresh is the case that proved it: it fetched at `PMIX_REMOTE` whatever the
+target's location, so `PMIX_GET_REFRESH_CACHE` of a same-node peer brought
+back that peer's `PMIX_REMOTE` copy and never its new `PMIX_LOCAL` value.
+
+Three rules keep the answer the requester's own:
+
+- **Only the requester's scope reaches the datastore.** The fetch carries
+  the `PMIX_DATA_SCOPE` the client gave, or `PMIX_SCOPE_UNDEF`, never a
+  scope this server picked from what it knows. The datastore works out
+  where the target is itself. A scope that contradicts that comes back
+  `PMIX_ERR_EXISTS_OUTSIDE_SCOPE`, which `pmix_server_get` answers
+  `PMIX_ERR_NOT_FOUND` at once, before parking or asking the host.
+- **A parked request is answered with its own scope.**
+  `pmix_dmdx_request_t.scope` records what each requester asked with, and
+  `check_req` uses it. It used to use the scope the waking data arrived at
+  (`PMIX_LOCAL` from a commit, `PMIX_REMOTE` from a direct-modex reply),
+  which says nothing about what was asked. `pmix_pending_resolve()` no
+  longer takes a scope at all.
+- **The scope is not forwarded to the host.** `create_local_tracker`
+  copies every directive but `PMIX_DATA_SCOPE` onto the tracker that goes
+  up as the direct-modex request. A reader that needs a direct modex is on
+  another node by definition, so the scope means nothing at the far end,
+  and the tracker is shared by requesters who may have asked with
+  different scopes. Forwarding it hung the request: PRRTE checks for the
+  key with its own `PMIx_Get` using these directives, and `PMIX_REMOTE`
+  there never finds a key the target posted only at `PMIX_LOCAL`, so it
+  polled until the reader timed out. `test/unit/server_dmodex_access.c`
+  checks what the up-call carries.
+- **The host's own `PMIx_Get` is not a requester's.** The client code
+  sets the flag only when this process is not a server (see
+  `get_applies_visibility()` in `src/client/pmix_client_get.c`). A host
+  reads a job's data as stored, and PRRTE's direct-modex check depends on
+  that: it runs on the target's node and looks for the data the target
+  posted for other nodes.
+
+`pmix_server_dmodex.c` does **not** set the flag, because it answers
+another node and owes it the target's `PMIX_REMOTE` data. Both of its
+answering paths go through `pmix_server_dmodex_answer()`, which honors a
+`PMIX_REQUIRED_KEY` in the request (`pmix_server_get` adds one for a keyed
+get): the request waits until that key is there at `PMIX_REMOTE` or
+`PMIX_GLOBAL`, not merely until the target's first commit, and a key the
+target posted only at `PMIX_LOCAL` is answered
+`PMIX_ERR_EXISTS_OUTSIDE_SCOPE`. The requesting server's `check_req` turns
+that into `PMIX_ERR_NOT_FOUND` for its clients. The commit wake-up in
+`pmix_server_fence.c` uses the same function, so a request that is still
+waiting for its key stays parked for the next commit.
+`test/unit/server_dmodex.c` holds the get rule, the host's reads and the
+direct-modex answer apart.
+
 **`_satisfy_request` reports whether it *answered*, not whether it
 succeeded.** Once it has data to hand back it invokes `cbfunc`, and that
 hands the server caddy to the reply path, which queues the client's

@@ -707,6 +707,7 @@ static void cbcon(pmix_cb_t *p)
     /* not computed yet - PMIX_GDS_FETCH_KV fills it in if the caller
      * has not, so no caller can forget and no fetch computes it twice */
     p->realm = PMIX_REALM_UNDEF;
+    p->get_visibility = false;
     p->lg = NULL;
     p->timer_running = false;
     p->fabric = NULL;

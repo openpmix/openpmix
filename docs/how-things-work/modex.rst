@@ -165,10 +165,11 @@ Collection: ``pmix_server_collect_data``
 
 When a fence carrying ``PMIX_COLLECT_DATA`` has gathered all of its
 local participants, ``pmix_server_collect_data`` builds this server's
-contribution. For each local participant it fetches the
-``PMIX_REMOTE``-scope kvals and packs a per-rank blob — the
-``pmix_proc_t`` followed by that process's kvals — then wraps the
-collection, compresses it, and wraps it again.
+contribution. For each local participant it packs a per-rank blob — the
+``pmix_proc_t`` followed by the ``PMIX_REMOTE`` and ``PMIX_GLOBAL``
+kvals that process has committed since this participant set last
+received them, taken from its modex log (see :ref:`modex-delta`) — then
+wraps the collection, compresses it, and wraps it again.
 
 The result is nested three deep::
 
@@ -293,6 +294,24 @@ and reported the library broken. The mode had never worked, and nothing
 noticed because the harness printed the mismatch and still exited zero.
 If you are chasing a "stale modex value," check for this before suspecting
 the datastore.
+
+What a get may see of a peer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Where a value was posted, and where the reader is relative to the poster,
+decide what a ``PMIx_Get`` returns. A peer on the reader's node shows its
+``PMIX_LOCAL`` and ``PMIX_GLOBAL`` data. A peer on another node shows its
+``PMIX_REMOTE`` and ``PMIX_GLOBAL`` data. A key posted at both
+``PMIX_LOCAL`` and ``PMIX_REMOTE`` therefore returns a different value
+depending on who asks. The full rules, the answer for every combination of
+scope and location, and where each rule is applied are in
+:doc:`data_scope`.
+
+The part that touches the modex: the rule applies only when a fetch
+answers a ``PMIx_Get``. ``PMIx_server_dmodex_request`` answers *another*
+node and has to read the target's ``PMIX_REMOTE`` data as stored, and a
+fence's contribution comes from each process's modex log (see
+:ref:`modex-delta`), not from the datastore.
 
 
 The Key Index

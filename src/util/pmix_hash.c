@@ -859,6 +859,20 @@ pmix_status_t pmix_hash_fetch_lowest_rank(pmix_hash_table_t *table,
                                           pmix_list_t *kvals,
                                           pmix_keyindex_t *kidx)
 {
+    return pmix_hash_fetch_lowest_rank_if(table, maxrank, key, qualifiers, nquals,
+                                          kvals, kidx, NULL, NULL, NULL);
+}
+
+pmix_status_t pmix_hash_fetch_lowest_rank_if(pmix_hash_table_t *table,
+                                             pmix_rank_t maxrank,
+                                             const char *key,
+                                             pmix_info_t *qualifiers, size_t nquals,
+                                             pmix_list_t *kvals,
+                                             pmix_keyindex_t *kidx,
+                                             pmix_hash_rank_filter_fn_t keep,
+                                             void *ctx,
+                                             pmix_rank_t *answered)
+{
     pmix_proc_data_t *proc_data;
     pmix_regattr_input_t *p;
     uint32_t id, kid, best = 0;
@@ -899,11 +913,13 @@ pmix_status_t pmix_hash_fetch_lowest_rank(pmix_hash_table_t *table,
          * - and the job-level data they carry - out of a per-rank
          * search. A job whose size is not known yet has nothing to
          * match, which is also what the loop this replaces did. */
-        if (id < maxrank && (!found || id < best) && NULL != proc_data) {
-            if (NULL != lookup_keyval(proc_data, kid, qualifiers, nquals, keyindex)) {
-                best = id;
-                found = true;
-            }
+        /* the key first: the filter can cost a lookup of its own, and
+         * most entries will not hold the key */
+        if (id < maxrank && (!found || id < best) && NULL != proc_data &&
+            NULL != lookup_keyval(proc_data, kid, qualifiers, nquals, keyindex) &&
+            (NULL == keep || keep((pmix_rank_t) id, ctx))) {
+            best = id;
+            found = true;
         }
         rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
                                                  (void **) &node);
@@ -913,6 +929,9 @@ pmix_status_t pmix_hash_fetch_lowest_rank(pmix_hash_table_t *table,
         return PMIX_ERR_NOT_FOUND;
     }
 
+    if (NULL != answered) {
+        *answered = (pmix_rank_t) best;
+    }
     /* Build the answer through the ordinary path so the copy and
      * qualified-value handling live in exactly one place. */
     return pmix_hash_fetch(table, (pmix_rank_t) best, key, qualifiers, nquals, kvals, kidx);

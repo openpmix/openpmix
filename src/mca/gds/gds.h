@@ -457,6 +457,27 @@ typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buff
  *
  * @param ninfo   number of elements in the info array
  *
+ * @param realm   the realm that answers the request, worked out once by
+ *                PMIX_GDS_FETCH_KV (see pmix_gds_base_request_realm)
+ *
+ * @param visibility  true when the fetch answers a PMIx_Get. The module
+ *                then applies the visibility rule of PMIx_Put(3) to the
+ *                data a process put, by where the target is relative to
+ *                this process (pmix_gds_base_rank_is_local):
+ *                  - a target on this node shows its PMIX_LOCAL and
+ *                    PMIX_GLOBAL data, never its PMIX_REMOTE data;
+ *                  - a target on another node shows its PMIX_REMOTE and
+ *                    PMIX_GLOBAL data, never its PMIX_LOCAL data;
+ *                  - a scope of PMIX_LOCAL names "a target on this node"
+ *                    and PMIX_REMOTE "a target on another node", so a
+ *                    scope that names the other location finds nothing.
+ *                Data that exists but is not visible is reported as
+ *                PMIX_ERR_EXISTS_OUTSIDE_SCOPE, so nobody waits for it.
+ *                Job-level data, this process's own data, and anything a
+ *                PMIX_INTERNAL scope asks for are not subject to the rule.
+ *                When false - every internal caller - the scope selects
+ *                the stored tables exactly as described below.
+ *
  * @param kvs     pointer to a list that will be populated with the
  *                returned pmix_kval_t data
  *
@@ -482,6 +503,7 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(struct pmix_peer_t *pee
                                                          pmix_scope_t scope, bool copy,
                                                          const char *key, pmix_info_t info[],
                                                          size_t ninfo, pmix_realm_t realm,
+                                                         bool visibility,
                                                          pmix_list_t *kvs);
 
 /* define a convenience macro for fetch key-val pairs based on peer,
@@ -501,7 +523,8 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(struct pmix_peer_t *pee
             (c)->realm = pmix_gds_base_request_realm((c)->key, (c)->info, (c)->ninfo);         \
         }                                                                                      \
         (s) = _g->fetch((p), (c)->proc, (c)->scope, (c)->copy, (c)->key,                       \
-                        (c)->info, (c)->ninfo, (c)->realm, &(c)->kvs);                         \
+                        (c)->info, (c)->ninfo, (c)->realm, (c)->get_visibility,          \
+                        &(c)->kvs);                                                            \
     } while (0)
 
 /**
@@ -803,6 +826,42 @@ typedef pmix_status_t (*pmix_gds_base_module_del_key_fn_t)(const pmix_proc_t *pr
         }                                                                                   \
     } while (0)
 
+/* A local client of this server committed "kv" at PMIX_LOCAL or
+ * PMIX_GLOBAL scope. Called by pmix_server_commit after the value is in
+ * the server's own datastore, so a module that shares local clients' data
+ * outside the server - gds/shmem3's local chain - knows what its next
+ * generation owes, and can withdraw a copy the commit just replaced.
+ * Optional; resolved from the namespace, as PMIX_GDS_DEL_KEY is. */
+typedef pmix_status_t (*pmix_gds_base_module_local_committed_fn_t)(struct pmix_namespace_t *ns,
+                                                                    struct pmix_peer_t *peer,
+                                                                    const pmix_proc_t *proc,
+                                                                    const pmix_kval_t *kv);
+#define PMIX_GDS_LOCAL_COMMITTED(s, ns, pr, pc, k)                                          \
+    do {                                                                                    \
+        (s) = PMIX_SUCCESS;                                                                 \
+        if (NULL != (ns) && NULL != (ns)->compat.gds &&                                     \
+            NULL != (ns)->compat.gds->local_committed) {                                    \
+            (s) = (ns)->compat.gds->local_committed((struct pmix_namespace_t *) (ns),      \
+                                                     (struct pmix_peer_t *) (pr), (pc), (k)); \
+        }                                                                                   \
+    } while (0)
+
+/* A fence over this namespace's local clients has completed: publish
+ * whatever local data they committed since the last one, before the
+ * fence reply goes out (that reply is what tells them about it). Called
+ * from the fence completion on every path - with collected data, without,
+ * and for a fence the server completed itself. Optional; resolved from
+ * the namespace. */
+typedef pmix_status_t (*pmix_gds_base_module_build_local_fn_t)(struct pmix_namespace_t *ns);
+#define PMIX_GDS_BUILD_LOCAL(s, ns)                                                         \
+    do {                                                                                    \
+        (s) = PMIX_SUCCESS;                                                                 \
+        if (NULL != (ns) && NULL != (ns)->compat.gds &&                                     \
+            NULL != (ns)->compat.gds->build_local) {                                        \
+            (s) = (ns)->compat.gds->build_local((struct pmix_namespace_t *) (ns));         \
+        }                                                                                   \
+    } while (0)
+
 /* define a convenience macro for is_tsafe for fetch operation */
 #define PMIX_GDS_FETCH_IS_TSAFE(s, p)                         \
     do {                                                      \
@@ -869,6 +928,8 @@ typedef struct {
     pmix_gds_base_module_pack_update_fn_t           pack_update;
     pmix_gds_base_module_accept_update_fn_t         accept_update;
     pmix_gds_base_module_add_job_data_fn_t          add_job_data;
+    pmix_gds_base_module_local_committed_fn_t       local_committed;
+    pmix_gds_base_module_build_local_fn_t           build_local;
 } pmix_gds_base_module_t;
 
 /* NOTE: there is no public GDS interface structure - all access is
@@ -883,7 +944,7 @@ typedef pmix_mca_base_component_t pmix_gds_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_gds_MAJOR_VERSION   2
+#define PMIX_MCA_gds_MAJOR_VERSION   3
 #define PMIX_MCA_gds_MINOR_VERSION   0
 #define PMIX_MCA_gds_RELEASE_VERSION 0
 

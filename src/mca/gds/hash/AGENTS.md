@@ -179,6 +179,50 @@ below.
   this is the first thing to check: `src/client/pmix_client_get.c` no
   longer papers over it.
 
+- **A `PMIx_Get` reads one of `local` and `remote`, never both.** With the
+  fetch's `visibility` set (see "What a `PMIx_Get` may see" in
+  [`../AGENTS.md`](../AGENTS.md)), `fetch_visible_rank()` in `gds_fetch.c`
+  reads `internal` (for an unscoped or `PMIX_GLOBAL` get) and then `local`
+  for a target on this node or `remote` for one on another node. A
+  `PMIX_GLOBAL` put is in both tables, so either one gives it.
+
+  **Where the target is comes from its `PMIX_HOSTNAME`** in `internal`
+  (stated by the host, or derived by `store_map()`), compared with ours by
+  `pmix_check_local()` - see `rank_locality()`. Not from `PMIX_NODEID`:
+  the ids `store_map()` derives are indices into one job's node map, and a
+  host may number nodes however it likes (`test/simple/simptest` gives
+  every rank of a one-node job a different one). A rank with no hostname
+  is of unknown location, and then a `PMIX_LOCAL`/`PMIX_REMOTE` scope on
+  the get is taken as the reader's word for it
+  (`pmix_gds_base_locality_or_scope()`); with neither, both tables are
+  read, local first.
+
+  A scope that contradicts the target's location is answered
+  `PMIX_ERR_EXISTS_OUTSIDE_SCOPE` before anything is read, and so is a
+  miss when the key is there in the copy the reader may not see. Both
+  tell a server not to park the request.
+
+  A `PMIX_RANK_UNDEF` get applies the rule rank by rank
+  (`fetch_visible_any()`, through `pmix_hash_fetch_lowest_rank_if()` with
+  a locality filter, which is asked only about ranks that hold the key).
+  Each table gives its lowest visible rank and the lower one answers, so
+  the answer does not depend on which table holds it. When nothing
+  visible is found, any copy at all means `PMIX_ERR_EXISTS_OUTSIDE_SCOPE`.
+
+  Without the flag, the scope picks the tables exactly as described above.
+  That is what the server's own fetches for a fence, a direct modex or a
+  connect need, and what the host's own `PMIx_Get` gets. Before the flag
+  existed, a `PMIX_GLOBAL` get returned whichever copy of a two-scope key
+  was stored last into the client's cache, which was the `PMIX_REMOTE` one.
+- **A derived `PMIX_NODEID` is the node's own id.** `store_map()` used to
+  store the map index `n` for each rank even when the node was already
+  known with an id the host gave it, so a rank and its node could
+  disagree. It now stores `nd->nodeid`, filling that in from the index
+  only when the host gave none.
+- **The client's cache keeps no scope.** `accept_kvs_resp` stores
+  everything a server reply carried at `PMIX_INTERNAL`. That is safe only
+  because the server sends nothing the requester may not see. Don't
+  make the server's get path reply with more than the visible data.
 - **`hash` is the fallback terminus.** The framework macros treat a `NULL`
   slot on a `"hash"` module as `PMIX_ERR_NOT_SUPPORTED` rather than
   retrying elsewhere. Since `hash` implements every slot this never fires
