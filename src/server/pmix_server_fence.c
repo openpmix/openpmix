@@ -147,7 +147,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
 {
     int32_t cnt;
     pmix_status_t rc;
-    pmix_buffer_t b2, pbkt;
+    pmix_buffer_t b2;
     pmix_kval_t *kp;
     pmix_scope_t scope;
     pmix_namespace_t *nptr;
@@ -156,7 +156,6 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     pmix_dmdx_remote_t *dcd, *dcdnext;
     char *data;
     size_t sz;
-    pmix_cb_t cb;
 
     /* shorthand */
     info = peer->info;
@@ -223,6 +222,18 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                     PMIX_RELEASE(kp);
                     PMIX_DESTRUCT(&b2);
                     return rc;
+                }
+                /* A module that shares this node's data outside our own
+                 * store - gds/shmem3's local chain - is told what its
+                 * next generation owes, and withdraws any copy this
+                 * commit just replaced. Its failing costs only speed:
+                 * the value is in our store, which answers for it. */
+                {
+                    pmix_status_t lrc;
+                    PMIX_GDS_LOCAL_COMMITTED(lrc, nptr, peer, &proc, kp);
+                    if (PMIX_SUCCESS != lrc) {
+                        PMIX_ERROR_LOG(lrc);
+                    }
                 }
             }
             if (PMIX_REMOTE == scope || PMIX_GLOBAL == scope) {
@@ -368,52 +379,26 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             continue;
         }
         if (dcd->cd->proc.rank == info->pname.rank) {
-            pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
-            data = NULL;
-            sz = 0;
+            bool wait;
+
             /* a request parked before we knew this job is checked now -
              * see docs/hosts/access-control.rst */
             rc = pmix_server_access_check_remote(nptr, dcd->cd->info, dcd->cd->ninfo);
             if (PMIX_SUCCESS != rc) {
+                pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
                 dcd->cd->cbfunc(rc, NULL, 0, dcd->cd->cbdata);
                 PMIX_RELEASE(dcd);
                 continue;
             }
-            /* we can now fulfill this request - collect the
-             * remote/global data from this proc - note that there
-             * may not be a contribution */
-            PMIX_CONSTRUCT(&cb, pmix_cb_t);
-            cb.proc = &proc;
-            cb.scope = PMIX_REMOTE;
-            cb.copy = true;
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-            if (PMIX_SUCCESS == rc) {
-                /* package it up */
-                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-                PMIX_LIST_FOREACH (kp, &cb.kvs, pmix_kval_t) {
-                    /* we pack this in our native BFROPS form as it
-                     * will be sent to another daemon.
-                     *
-                     * Check every element. The loop used to leave the
-                     * status where the last iteration put it, so a value
-                     * this peer's module could not pack was dropped from
-                     * the blob and a later one that packed cleanly then
-                     * reported the whole thing a success. The requesting
-                     * server was handed a short modex it had no way to
-                     * tell from a complete one, and the key simply went
-                     * missing at the far end. */
-                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, kp, 1, PMIX_KVAL);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        break;
-                    }
-                }
-                if (PMIX_SUCCESS == rc) {
-                    PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
-                }
-                PMIX_DESTRUCT(&pbkt);
+            /* we may be able to fulfill this request now - unless the key
+             * it needs is still not here, in which case it stays parked
+             * for the next commit (see pmix_server_dmodex_answer) */
+            rc = pmix_server_dmodex_answer(&proc, dcd->cd->info, dcd->cd->ninfo,
+                                           &data, &sz, &wait);
+            if (wait) {
+                continue;
             }
-            PMIX_DESTRUCT(&cb);
+            pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
             /* execute the callback */
             dcd->cd->cbfunc(rc, data, sz, dcd->cd->cbdata);
             if (NULL != data) {
@@ -424,7 +409,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
         }
     }
     /* see if anyone local is waiting on this data- could be more than one */
-    rc = pmix_pending_resolve(nptr, info->pname.rank, PMIX_SUCCESS, PMIX_LOCAL, NULL);
+    rc = pmix_pending_resolve(nptr, info->pname.rank, PMIX_SUCCESS, NULL);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }

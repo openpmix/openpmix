@@ -91,6 +91,11 @@ following values:
   not shared with any other process. Typically used to cache data the process
   obtained by means outside of PMIx.
 
+A key may be posted at both ``PMIX_LOCAL`` and ``PMIX_REMOTE`` scope with
+different values. A ``PMIx_Get`` by a process on the poster's node then returns
+the ``PMIX_LOCAL`` value, and one by a process on any other node returns the
+``PMIX_REMOTE`` value. See "DATA SCOPE" in :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
+
 This implementation supports four additional values |mdash| ``PMIX_DEL_LOCAL``,
 ``PMIX_DEL_REMOTE``, ``PMIX_DEL_GLOBAL`` and ``PMIX_DEL_INTERNAL`` |mdash| which
 name the same audiences as the four above but direct that ``key`` be **removed**

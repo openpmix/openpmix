@@ -79,6 +79,17 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata);
 
 static pmix_status_t process_values(pmix_cb_t *cb);
 
+/* Is this PMIx_Get subject to the visibility rule (see "DATA SCOPE" in
+ * PMIx_Get(3))? A process of a job is: what it may see of a peer's posted
+ * data depends on where the peer is. The host environment is not - it is
+ * not a process of the job, and it reads a job's data as stored. Its
+ * direct-modex check depends on that: it runs on the target's node and
+ * looks for the data the target posted for other nodes. */
+static inline bool get_applies_visibility(void)
+{
+    return !PMIX_PEER_IS_SERVER(pmix_globals.mypeer);
+}
+
 static pmix_status_t refresh_cache(const pmix_proc_t *p);
 
 /* Return a caddy's result list to the state a fresh one is in.
@@ -513,6 +524,8 @@ static bool try_local_fetch(pmix_cb_t *cb, pmix_get_logic_t *lg)
 
     cb->proc = &lg->p;
     cb->scope = lg->scope;
+    /* a PMIx_Get: see the note on pmix_cb_t.get_visibility */
+    cb->get_visibility = get_applies_visibility();
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
     if (PMIX_SUCCESS != rc) {
         /* Nothing found, or something we do not handle here. Drop
@@ -808,6 +821,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     cb->info = (pmix_info_t*)info;
     cb->ninfo = ninfo;
     cb->scope = lg->scope;
+    /* a PMIx_Get: see the note on pmix_cb_t.get_visibility */
+    cb->get_visibility = get_applies_visibility();
     cb->cbfunc.valuefn = cbfunc;
     cb->cbdata = cbdata;
     // flag that we need to use an intermediate return point
@@ -1501,6 +1516,8 @@ static void get_data(int sd, short args, void *cbdata)
     /* check the data provided to us by the server first */
     cb->proc = &lg->p;
     cb->scope = lg->scope;
+    /* a PMIx_Get: see the note on pmix_cb_t.get_visibility */
+    cb->get_visibility = get_applies_visibility();
     PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
     if (lg->nodeinfo) {
@@ -1847,7 +1864,49 @@ doget:
     if (PMIX_SUCCESS == rc) {
         pmix_output_verbose(5, pmix_client_globals.get_output,
                             "pmix:client data found in server-provided data");
+        if (NULL == cb->key && pmix_gds_base_is_me(cb->proc) &&
+            !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
+            /* "Everything about me" lives in two stores when they are
+             * not the same module: what the host said about us is in the
+             * server's (shared) store, and what we posted ourselves is in
+             * our own. Either alone is half the answer, so add ours -
+             * keeping the server's copy of any key both hold. A "hash"
+             * server shares our tables, so there it is one store. */
+            pmix_cb_t mine;
+            pmix_kval_t *mkv, *mnext, *have;
+            bool dup;
+
+            PMIX_CONSTRUCT(&mine, pmix_cb_t);
+            mine.proc = cb->proc;
+            mine.scope = PMIX_INTERNAL;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &mine);
+            PMIX_LIST_FOREACH_SAFE (mkv, mnext, &mine.kvs, pmix_kval_t) {
+                dup = false;
+                PMIX_LIST_FOREACH (have, &cb->kvs, pmix_kval_t) {
+                    if (PMIx_Check_key(have->key, mkv->key)) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) {
+                    pmix_list_remove_item(&mine.kvs, &mkv->super);
+                    pmix_list_append(&cb->kvs, &mkv->super);
+                }
+            }
+            PMIX_DESTRUCT(&mine);
+        }
         cb->status = process_values(cb);
+        goto done;
+    }
+    if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc && cb->get_visibility) {
+        /* The datastore knows where the target is and says this process
+         * may never see the answer: the scope contradicts the target's
+         * location, or the key is one the target posted only for the
+         * other side of the node boundary. Asking the server would bring
+         * back the same answer a round trip later. See "DATA SCOPE" in
+         * PMIx_Get(3). */
+        DRAIN_KVS(cb);
+        cb->status = PMIX_ERR_NOT_FOUND;
         goto done;
     }
     /* a gds fetch can append to cb->kvs and then fail, and this caddy is

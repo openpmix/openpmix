@@ -264,6 +264,72 @@ PMIX_EXPORT pmix_realm_t pmix_gds_base_request_realm(const char *key,
                                                      const pmix_info_t info[],
                                                      size_t ninfo);
 
+/* Where a PMIx_Get's target is, relative to the reader. See "Who is on
+ * my node" in docs/how-things-work/data_scope.rst.
+ *
+ * Each datastore answers it from the job data it holds: the target rank's
+ * PMIX_HOSTNAME, stated by the host or derived from the node and proc
+ * maps, compared with this process's own hostname and its aliases. A
+ * hostname means the same node in every job; a node ID need not - the
+ * ones a datastore derives are indices into one job's node map, and a
+ * host may number its nodes however it likes.
+ *
+ * UNKNOWN means the datastore holds no hostname for the target, and the
+ * visibility rule is then not applied: every copy is searched, as before
+ * the rule existed. */
+typedef enum {
+    PMIX_GDS_LOC_UNKNOWN = 0,
+    PMIX_GDS_LOC_LOCAL,
+    PMIX_GDS_LOC_REMOTE
+} pmix_gds_base_locality_t;
+
+static inline pmix_gds_base_locality_t pmix_gds_base_host_locality(const char *hostname)
+{
+    if (NULL == hostname) {
+        return PMIX_GDS_LOC_UNKNOWN;
+    }
+    return pmix_check_local(hostname) ? PMIX_GDS_LOC_LOCAL : PMIX_GDS_LOC_REMOTE;
+}
+
+/* Where to take the target to be. When the datastore cannot tell, a
+ * PMIX_LOCAL or PMIX_REMOTE scope on the get is the reader saying where
+ * the target is, and that is the best word there is. With neither, the
+ * location stays unknown and every copy is searched, local first. */
+static inline pmix_gds_base_locality_t
+pmix_gds_base_locality_or_scope(pmix_gds_base_locality_t loc, pmix_scope_t scope)
+{
+    if (PMIX_GDS_LOC_UNKNOWN == loc) {
+        if (PMIX_LOCAL == scope) {
+            return PMIX_GDS_LOC_LOCAL;
+        }
+        if (PMIX_REMOTE == scope) {
+            return PMIX_GDS_LOC_REMOTE;
+        }
+    }
+    return loc;
+}
+
+/* Does a PMIX_DATA_SCOPE on a get contradict where the target is? A
+ * scope of PMIX_LOCAL names "a target on this node" and PMIX_REMOTE "a
+ * target on another node", so asking a target with the other one finds
+ * nothing - whatever the target put. See PMIx_Get(3). A target whose
+ * location is unknown contradicts nothing. */
+static inline bool pmix_gds_base_scope_contradicts(pmix_scope_t scope,
+                                                   pmix_gds_base_locality_t loc)
+{
+    return (PMIX_GDS_LOC_LOCAL == loc && PMIX_REMOTE == scope) ||
+           (PMIX_GDS_LOC_REMOTE == loc && PMIX_LOCAL == scope);
+}
+
+/* Is the target this process itself? Compared exactly: PMIX_CHECK_PROCID
+ * reads an empty namespace as a wildcard. A process's own data is not
+ * subject to the visibility rule. */
+static inline bool pmix_gds_base_is_me(const pmix_proc_t *proc)
+{
+    return proc->rank == pmix_globals.myid.rank &&
+           0 == strncmp(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
+}
+
 END_C_DECLS
 
 #endif

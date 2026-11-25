@@ -50,6 +50,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/base/base.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
@@ -725,21 +726,20 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     PMIX_LOAD_PROCID(&proc, nspace, rank);
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &proc;
-    if (scope_given) {
-        cb.scope = scope;
-    } else {
-        if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
-            cb.scope = PMIX_SCOPE_UNDEF;
-        } else if (local) {
-            cb.scope = PMIX_LOCAL;
-        } else {
-            cb.scope = PMIX_REMOTE;
-        }
-    }
+    /* Only the scope the reader gave. Which of a target's copies it may
+     * see follows from where the target is, and the datastore works that
+     * out itself (see the "visibility" argument of its fetch) - a scope
+     * picked here from what this server knows would be judged as though
+     * the reader had asked for it. A scope that contradicts where the
+     * target is comes back PMIX_ERR_EXISTS_OUTSIDE_SCOPE, answered below
+     * without parking the request or asking the host. */
+    cb.scope = scope_given ? scope : PMIX_SCOPE_UNDEF;
     cb.copy = false;
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
     cb.key = key;
+    /* answering a PMIx_Get: see the note on pmix_cb_t.get_visibility */
+    cb.get_visibility = true;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS_OUTSIDE_SCOPE != rc) {
         /* Not in our own store - but that does not mean it is not
@@ -847,14 +847,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
      * the nspace of the target process */
     diffnspace = !PMIX_CHECK_NSPACE(nptr->nspace, cd->peer->info->pname.nspace);
 
+    /* only the reader's own scope - see the note on the probe fetch above */
     if (!scope_given) {
-        if (PMIX_RANK_UNDEF == rank || diffnspace) {
-            scope = PMIX_GLOBAL;
-        } else if (local) {
-            scope = PMIX_LOCAL;
-        } else {
-            scope = PMIX_REMOTE;
-        }
+        scope = PMIX_SCOPE_UNDEF;
     }
 
     /* since everyone has registered, see if we already have this data */
@@ -979,7 +974,7 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
     pmix_dmdx_local_t *lcd, *cd;
     pmix_dmdx_request_t *req;
     pmix_status_t rc;
-    size_t n;
+    size_t n, nkeep;
 
     /* define default */
     *ld = NULL;
@@ -1015,8 +1010,26 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
         return PMIX_ERR_NOMEM;
     }
     PMIX_LOAD_PROCID(&lcd->proc, nspace, rank);
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(lcd->info, ninfo);
+    /* Every directive but the scope. The tracker is shared by every
+     * requester of this target, and they need not have asked with the same
+     * scope - each request keeps its own (pmix_dmdx_request_t.scope). Nor
+     * does a scope mean anything to the host or to the target's server: a
+     * reader that needs a direct modex is on another node by definition,
+     * and pmix_server_dmodex_answer() owes it the target's PMIX_REMOTE and
+     * PMIX_GLOBAL data whatever it asked with. Forwarding it did harm, too:
+     * PRRTE checks for the key with its own PMIx_Get using these
+     * directives, and a PMIX_REMOTE scope there can never find a key the
+     * target posted only at PMIX_LOCAL - so the check polled until the
+     * reader timed out, where the target's server would have answered
+     * "outside scope" at once. */
+    nkeep = 0;
+    for (n = 0; n < ninfo; n++) {
+        if (!PMIX_CHECK_KEY(&info[n], PMIX_DATA_SCOPE)) {
+            nkeep++;
+        }
+    }
+    if (0 < nkeep) {
+        PMIX_INFO_CREATE(lcd->info, nkeep);
         if (NULL == lcd->info) {
             /* nothing screens this one - we index the array ourselves.
              * The tracker is not on the list yet, so a plain release is
@@ -1024,9 +1037,13 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
             PMIX_RELEASE(lcd);
             return PMIX_ERR_NOMEM;
         }
-        lcd->ninfo = ninfo;
+        lcd->ninfo = nkeep;
+        nkeep = 0;
         for (n = 0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&lcd->info[n], &info[n]);
+            if (!PMIX_CHECK_KEY(&info[n], PMIX_DATA_SCOPE)) {
+                PMIX_INFO_XFER(&lcd->info[nkeep], &info[n]);
+                nkeep++;
+            }
         }
     }
     /* whose request this is - and the host is told, by the connection's
@@ -1057,6 +1074,14 @@ complete:
             PMIX_RELEASE(lcd);
         }
         return PMIX_ERR_NOMEM;
+    }
+    /* the scope this requester asked with - pmix_server_get() has
+     * already refused one of the wrong type */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_DATA_SCOPE) && PMIX_SCOPE == info[n].value.type) {
+            req->scope = info[n].value.data.scope;
+            break;
+        }
     }
     if (NULL != key) {
         req->key = strdup(key);
@@ -1411,6 +1436,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     cb.scope = scope;
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
+    /* answering a PMIx_Get: see the note on pmix_cb_t.get_visibility */
+    cb.get_visibility = true;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     /* Did that answer the question? Only a fetch that named the key can
      * say so from its status alone. The optimization above asks for a
@@ -1424,6 +1451,13 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     answered = (PMIX_SUCCESS == rc);
     if (answered && NULL == cb.key && NULL != key) {
         answered = list_has_key(&cb.kvs, key);
+    }
+    if (NULL == key) {
+        /* The requester itself asked for everything. Success from our own
+         * store says only that it holds something - the host's data about
+         * the rank, at least - and for a job on another module the rest is
+         * in that module's store, so the two are always merged below. */
+        answered = false;
     }
     if (!answered) {
         /* Not in our own store - but that does not mean it is not here.
@@ -1461,6 +1495,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
             cb2.key = cb.key;
             cb2.proc = &proc;
             cb2.scope = scope;
+            cb2.get_visibility = true;
             cb2.copy = cb.copy;
             cb2.info = cd->info;
             cb2.ninfo = cd->ninfo;
@@ -1559,7 +1594,6 @@ complete:
 static void check_req(pmix_namespace_t *nptr,
                       pmix_rank_t rank,
                       pmix_status_t status,
-                      pmix_scope_t scope,
                       pmix_dmdx_local_t *ptr)
 {
     pmix_dmdx_request_t *req, *rnext;
@@ -1576,6 +1610,13 @@ static void check_req(pmix_namespace_t *nptr,
     }
 
     /* somebody was interested in this rank */
+    if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == status) {
+        /* the target's server says the key exists only where these
+         * requesters may not see it (pmix_server_dmodex_answer) - to a
+         * PMIx_Get that is simply not found. See "DATA SCOPE" in
+         * PMIx_Get(3) */
+        status = PMIX_ERR_NOT_FOUND;
+    }
     if (PMIX_SUCCESS != status) {
         /* if we've got an error for this request - just forward it*/
         PMIX_LIST_FOREACH_SAFE(req, rnext, &ptr->loc_reqs, pmix_dmdx_request_t) {
@@ -1617,7 +1658,8 @@ static void check_req(pmix_namespace_t *nptr,
             } else {
                 key = NULL;
             }
-            rc = _satisfy_request(nptr, rank, key, &scd, diffnspace, scope,
+            /* the requester's scope, not the one this data arrived at */
+            rc = _satisfy_request(nptr, rank, key, &scd, diffnspace, req->scope,
                                   req->cbfunc, req->cbdata);
             if (PMIX_SUCCESS != rc && NULL != req->cbfunc) {
                 /* if we can't satisfy this particular request (missing key?).
@@ -1637,7 +1679,6 @@ static void check_req(pmix_namespace_t *nptr,
 pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
                                    pmix_rank_t rank,
                                    pmix_status_t status,
-                                   pmix_scope_t scope,
                                    pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd, *cdnext;
@@ -1650,7 +1691,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
             }
             if (PMIX_RANK_UNDEF == cd->proc.rank ||
                 rank == cd->proc.rank) {
-                check_req(nptr, cd->proc.rank, status, scope, cd);
+                check_req(nptr, cd->proc.rank, status, cd);
             }
             if (0 == pmix_list_get_size(&cd->loc_reqs)) {
                 pmix_list_remove_item(&pmix_server_globals.local_reqs, &cd->super);
@@ -1658,7 +1699,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
             }
         }
     } else {
-        check_req(nptr, rank, status, scope, lcd);
+        check_req(nptr, rank, status, lcd);
         if (0 == pmix_list_get_size(&lcd->loc_reqs)) {
             pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
             PMIX_RELEASE(lcd);
@@ -1935,7 +1976,7 @@ complete:
     PMIX_LIST_DESTRUCT(&nspaces);
     /* always execute the callback to avoid having the client hang */
     pmix_pending_resolve(nptr, caddy->lcd->proc.rank,
-                         caddy->status, PMIX_REMOTE, caddy->lcd);
+                         caddy->status, caddy->lcd);
 
 release:
     /* now call the release function so the host server

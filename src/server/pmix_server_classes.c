@@ -293,6 +293,7 @@ static void dmrqcon(pmix_dmdx_request_t *p)
     p->event_active = false;
     p->lcd = NULL;
     p->key = NULL;
+    p->scope = PMIX_SCOPE_UNDEF;
     /* three sites in the get path ask "NULL != req->cbfunc" before
      * calling it, so NULL has to mean something here - left
      * unassigned it is whatever was on the heap, and the test passes

@@ -18,6 +18,7 @@
 #include "gds_shmem3_utils.h"
 
 #include "src/util/pmix_hash.h"
+#include "src/mca/gds/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/ptl_types.h"
 
@@ -616,14 +617,22 @@ fetch_sessioninfo(
     return xfer_sessioninfo(peer, sesh, key, kvs);
 }
 
-// TODO(skg) This needs plenty of work.
+/* Which chain a tombstone is being compared against - each carries its
+ * own generation numbers. See pmix_gds_shmem3_tombstone_t. */
+typedef enum {
+    TS_JOB,
+    TS_MODEX,
+    TS_LOCAL
+} ts_chain_t;
+
 /* Has this job been told to stop answering for this key?
  *
- * "generation" is the modex generation the answer would come from, or
- * UINT32_MAX for the job segment - which is written once and never
- * re-published, so a tombstone against it always applies. Modex data can
- * legitimately come back, so a tombstone only shadows generations up to
- * the one at which it was recorded.
+ * "generation" is that of the segment the answer would come from. Job
+ * data is written once and never re-published, so a tombstone against it
+ * always applies. Modex and local data can legitimately come back, so a
+ * tombstone only shadows the generations of that chain recorded before
+ * it: a modex generation up to the one current when it was made, and a
+ * local generation below the count held then (pmix_gds_shmem3_local_count).
  *
  * The list is empty for every job nobody has deleted from, which is the
  * ordinary case, so this costs a NULL test on the usual path. */
@@ -631,7 +640,8 @@ static bool tombstoned(
     pmix_gds_shmem3_job_t *job,
     pmix_rank_t rank,
     const char *key,
-    uint32_t generation
+    uint32_t generation,
+    ts_chain_t chain
 ) {
     pmix_gds_shmem3_tombstone_t *t;
 
@@ -639,18 +649,67 @@ static bool tombstoned(
         return false;
     }
     /* Entering the chain is one acquire-load; the ->prior pointers are
-     * immutable, so the rest of the walk needs nothing. Empty for every
-     * job nobody has deleted from, which is the ordinary case. */
+     * immutable, so the rest of the walk needs nothing. */
     for (t = atomic_load_explicit(&job->tombstones, memory_order_acquire);
          NULL != t; t = t->prior) {
         if (t->rank != rank || NULL == t->key || 0 != strcmp(t->key, key)) {
             continue;
         }
-        if (UINT32_MAX == generation || generation <= t->generation) {
+        switch (chain) {
+            case TS_JOB:
+                return true;
+            case TS_MODEX:
+                if (generation <= t->generation) {
+                    return true;
+                }
+                break;
+            case TS_LOCAL:
+                if (generation < t->local_generation) {
+                    return true;
+                }
+                break;
+        }
+    }
+    return false;
+}
+
+/* Has this job withdrawn any key of this rank - of any rank, for
+ * PMIX_RANK_UNDEF? Same lock-free walk as tombstoned(). */
+static bool has_tombstone(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank
+) {
+    pmix_gds_shmem3_tombstone_t *t;
+
+    for (t = atomic_load_explicit(&job->tombstones, memory_order_acquire);
+         NULL != t; t = t->prior) {
+        if (PMIX_RANK_UNDEF == rank || t->rank == rank) {
             return true;
         }
     }
     return false;
+}
+
+/* The key a tombstone is matched against. A qualified value is stored
+ * and returned under PMIX_QUALIFIED_VALUE with its real key inside, and
+ * a deletion names the real key - the same terms gds/hash removes one
+ * on. */
+static const char *tombstone_key(
+    const pmix_kval_t *kv
+) {
+    pmix_info_t *info;
+    size_t ninfo;
+
+    if (NULL == kv || NULL == kv->key) {
+        return NULL;
+    }
+    if (!PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+        return kv->key;
+    }
+    if (!pmix_gds_base_info_array(kv->value, &info, &ninfo) || 0 == ninfo) {
+        return NULL;
+    }
+    return info[0].key;
 }
 
 /* Drop from a fetch result anything this job has stopped answering for.
@@ -662,6 +721,7 @@ static void drop_tombstoned(
     pmix_rank_t rank,
     pmix_list_t *kvs,
     uint32_t generation,
+    ts_chain_t chain,
     size_t mark
 ) {
     pmix_kval_t *kv, *nxt;
@@ -678,7 +738,7 @@ static void drop_tombstoned(
         if (n++ < mark) {
             continue;
         }
-        if (tombstoned(job, rank, kv->key, generation)) {
+        if (tombstoned(job, rank, tombstone_key(kv), generation, chain)) {
             pmix_list_remove_item(kvs, &kv->super);
             PMIX_RELEASE(kv);
         }
@@ -840,7 +900,7 @@ static pmix_status_t job_fetch(
         if (PMIX_SUCCESS != r2) {
             continue;
         }
-        drop_tombstoned(job, rank, kvs, UINT32_MAX, mark);
+        drop_tombstoned(job, rank, kvs, UINT32_MAX, TS_JOB, mark);
         if (NULL != key) {
             /* a keyed request stops at the newest segment that has it */
             if (pmix_list_get_size(kvs) > mark) {
@@ -930,7 +990,7 @@ modex_fetch(
             return r2;
         }
         if (PMIX_SUCCESS == r2) {
-            drop_tombstoned(job, rank, kvs, seg->generation, mark);
+            drop_tombstoned(job, rank, kvs, seg->generation, TS_MODEX, mark);
             if (NULL != key) {
                 if (strip_undef(kvs, mark)) {
                     return PMIX_ERR_NOT_FOUND;
@@ -953,6 +1013,424 @@ modex_fetch(
     return rc;
 }
 
+/* Read the local chain, newest generation first - the modex walk again,
+ * over what the server's own clients put at PMIX_LOCAL and PMIX_GLOBAL
+ * scope. Each generation holds only what was committed since the one
+ * before, so a NULL-key read consults all of them and drops what a newer
+ * one already supplied. See "Local data" in shmem3.rst. */
+static pmix_status_t
+local_fetch(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    pmix_gds_shmem3_seg_t *seg;
+    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+    pmix_status_t r2;
+    size_t mark;
+
+    for (seg = pmix_gds_shmem3_chain_head(&job->local_chain);
+         NULL != seg; seg = seg->prior) {
+        pmix_gds_shmem3_shared_modex_data_t *const sm = seg->smdata;
+        if (NULL == sm) {
+            continue;
+        }
+        mark = pmix_list_get_size(kvs);
+        r2 = pmix_hash_fetch(sm->hashtab, rank, key, qualifiers,
+                             nqual, kvs, sm->keyindex);
+        if (PMIX_ERR_NOMEM == r2) {
+            return r2;
+        }
+        if (PMIX_SUCCESS != r2) {
+            continue;
+        }
+        drop_tombstoned(job, rank, kvs, seg->generation, TS_LOCAL, mark);
+        if (NULL != key) {
+            if (pmix_list_get_size(kvs) > mark) {
+                return PMIX_SUCCESS;
+            }
+            continue;
+        }
+        drop_shadowed(kvs, mark);
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
+}
+
+/* Did the server leave a value out of any segment this job's reads
+ * consult? Then a request for "everything" cannot be answered here -
+ * see pmix_gds_shmem3_segment_can_hold(). */
+static bool
+job_incomplete(
+    pmix_gds_shmem3_job_t *job
+) {
+    pmix_gds_shmem3_seg_t *seg;
+
+    for (seg = pmix_gds_shmem3_chain_head(&job->job_chain); NULL != seg; seg = seg->prior) {
+        if (NULL != seg->smdata &&
+            ((pmix_gds_shmem3_shared_job_data_t *) seg->smdata)->incomplete) {
+            return true;
+        }
+    }
+    for (seg = pmix_gds_shmem3_chain_head(&job->modex_chain); NULL != seg; seg = seg->prior) {
+        if (NULL != seg->smdata &&
+            ((pmix_gds_shmem3_shared_modex_data_t *) seg->smdata)->incomplete) {
+            return true;
+        }
+    }
+    for (seg = pmix_gds_shmem3_chain_head(&job->local_chain); NULL != seg; seg = seg->prior) {
+        if (NULL != seg->smdata &&
+            ((pmix_gds_shmem3_shared_modex_data_t *) seg->smdata)->incomplete) {
+            return true;
+        }
+    }
+    if (NULL != job->session) {
+        for (seg = pmix_gds_shmem3_chain_head(&job->session->segments); NULL != seg;
+             seg = seg->prior) {
+            if (NULL != seg->smdata &&
+                ((pmix_gds_shmem3_shared_session_data_t *) seg->smdata)->incomplete) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* ------------------------------------------------------------------
+ * The PMIx_Get visibility rule - see the "visibility" argument of the
+ * fetch in src/mca/gds/gds.h, and docs/how-things-work/data_scope.rst.
+ *
+ * This module keeps the two copies of a process's posted data in two
+ * chains: the local chain holds what the server's own clients posted at
+ * PMIX_LOCAL and PMIX_GLOBAL scope, and the modex chain what every
+ * process posted at PMIX_REMOTE and PMIX_GLOBAL. A same-node target is
+ * read from the first and any other from the second, never both. A
+ * PMIX_DATA_SCOPE that names the location the target is not at reads
+ * neither. Everything read here is in segments or on chains, so it is
+ * safe on the application's thread.
+ * ------------------------------------------------------------------ */
+
+/* Same exemptions as gds/hash: job-level data (a wildcard rank), a
+ * reserved key, a scope that is none of the four, and our own data are
+ * not anybody else's put data. */
+static bool
+visibility_applies(
+    const pmix_proc_t *proc,
+    pmix_scope_t scope,
+    const char *key
+) {
+    if (PMIX_SCOPE_UNDEF != scope && PMIX_LOCAL != scope &&
+        PMIX_REMOTE != scope && PMIX_GLOBAL != scope) {
+        return false;
+    }
+    if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+        return false;
+    }
+    if (PMIX_RANK_UNDEF == proc->rank) {
+        return true;
+    }
+    if (!PMIX_RANK_IS_VALID(proc->rank)) {
+        return false;
+    }
+    return !pmix_gds_base_is_me(proc);
+}
+
+/* Where a rank of this job is: its PMIX_HOSTNAME in the job's data,
+ * which the server took from its own store (stated by the host or
+ * derived from the maps), against ours. */
+static pmix_gds_base_locality_t
+rank_locality(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank
+) {
+    pmix_gds_base_locality_t loc = PMIX_GDS_LOC_UNKNOWN;
+    pmix_list_t kvs;
+    pmix_kval_t *kv;
+
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    if (PMIX_SUCCESS == job_fetch(job, rank, PMIX_HOSTNAME, NULL, 0, &kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&kvs);
+        if (NULL != kv && NULL != kv->value && PMIX_STRING == kv->value->type) {
+            loc = pmix_gds_base_host_locality(kv->value->data.string);
+        }
+    }
+    PMIX_LIST_DESTRUCT(&kvs);
+    return loc;
+}
+
+static void
+drain_from(
+    pmix_list_t *kvs,
+    size_t mark
+) {
+    pmix_kval_t *kv;
+
+    while (pmix_list_get_size(kvs) > mark &&
+           NULL != (kv = (pmix_kval_t *) pmix_list_remove_last(kvs))) {
+        PMIX_RELEASE(kv);
+    }
+}
+
+/* One rank's put data, as a reader there may see it. "loc" has already
+ * been resolved, scope included. */
+static pmix_status_t
+visible_rank_data(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    pmix_gds_base_locality_t loc,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    const size_t mark = pmix_list_get_size(kvs);
+    pmix_status_t rc;
+
+    if (PMIX_GDS_LOC_REMOTE != loc) {
+        rc = local_fetch(job, rank, key, qualifiers, nqual, kvs);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        if (NULL != key && pmix_list_get_size(kvs) > mark) {
+            return PMIX_SUCCESS;
+        }
+    }
+    if (PMIX_GDS_LOC_LOCAL != loc) {
+        rc = modex_fetch(job, rank, key, qualifiers, nqual, kvs);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+    }
+    return (pmix_list_get_size(kvs) > mark) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND;
+}
+
+/* A named rank. A miss is PMIX_ERR_NOT_FOUND even when the copy the
+ * reader may not see is here: between fences the local chain can be
+ * behind the server - a key committed or replaced since the last fence is
+ * not in it yet - so a miss here is not proof the reader can never be
+ * answered. The server's own store is current, and it says so. A scope
+ * that contradicts where the target is IS proof, and is answered at once. */
+static pmix_status_t
+visible_fetch_rank(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    pmix_scope_t scope,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    const pmix_gds_base_locality_t loc =
+        pmix_gds_base_locality_or_scope(rank_locality(job, rank), scope);
+    const size_t mark = pmix_list_get_size(kvs);
+    pmix_status_t rc;
+
+    if (pmix_gds_base_scope_contradicts(scope, loc)) {
+        return PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+    }
+    if (PMIX_SCOPE_UNDEF == scope || PMIX_GLOBAL == scope) {
+        /* what the host told us about this rank */
+        rc = job_fetch(job, rank, key, qualifiers, nqual, kvs);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        if (NULL != key && pmix_list_get_size(kvs) > mark) {
+            return PMIX_SUCCESS;
+        }
+    }
+    rc = visible_rank_data(job, rank, loc, key, qualifiers, nqual, kvs);
+    if (PMIX_ERR_NOMEM == rc) {
+        return rc;
+    }
+    return (pmix_list_get_size(kvs) > mark) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND;
+}
+
+/* PMIX_RANK_UNDEF: any rank of the namespace, in the order gds/hash
+ * answers it - job-level data first, then the lowest-numbered rank whose
+ * copy the reader may see. A scope narrows the ranks searched: PMIX_LOCAL
+ * to those on our node, PMIX_REMOTE to the others.
+ *
+ * When nothing visible is found but the key is here in a copy the
+ * reader's own scope excluded - a rank on another node for PMIX_LOCAL, one
+ * on ours for PMIX_REMOTE - the answer is PMIX_ERR_EXISTS_OUTSIDE_SCOPE,
+ * as gds/hash gives it, so nobody waits for it. A copy hidden by where its
+ * poster is (a same-node rank's PMIX_REMOTE data) does not count: as for
+ * a named rank, the local chain may be behind the server. */
+static pmix_status_t
+visible_fetch_any(
+    pmix_gds_shmem3_job_t *job,
+    pmix_scope_t scope,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    const pmix_rank_t nranks = job->nspace->nprocs;
+    const size_t mark = pmix_list_get_size(kvs);
+    pmix_status_t rc;
+    bool excluded = false;
+
+    if (PMIX_SCOPE_UNDEF == scope || PMIX_GLOBAL == scope) {
+        if (NULL != key) {
+            for (pmix_rank_t rnk = 0; rnk < nranks; rnk++) {
+                rc = job_fetch(job, rnk, key, qualifiers, nqual, kvs);
+                if (PMIX_ERR_NOMEM == rc || PMIX_SUCCESS == rc) {
+                    return rc;
+                }
+            }
+            rc = job_fetch(job, PMIX_RANK_WILDCARD, key, qualifiers, nqual, kvs);
+            if (PMIX_ERR_NOMEM == rc || PMIX_SUCCESS == rc) {
+                return rc;
+            }
+        } else {
+            for (pmix_rank_t rnk = 0; rnk < nranks; rnk++) {
+                rc = job_fetch(job, rnk, NULL, NULL, 0, kvs);
+                if (PMIX_ERR_NOMEM == rc) {
+                    return rc;
+                }
+            }
+            rc = job_fetch(job, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
+            if (PMIX_ERR_NOMEM == rc) {
+                return rc;
+            }
+        }
+    }
+
+    if (NULL != key) {
+        /* A rank's place is looked up only when the modex has the key for
+         * it: whatever the local chain holds was posted by one of our own
+         * clients, so a hit there is a same-node rank by construction, and
+         * most ranks have the key in neither. */
+        for (pmix_rank_t rnk = 0; rnk < nranks; rnk++) {
+            const size_t rmark = pmix_list_get_size(kvs);
+
+            rc = local_fetch(job, rnk, key, qualifiers, nqual, kvs);
+            if (PMIX_ERR_NOMEM == rc) {
+                return rc;
+            }
+            if (pmix_list_get_size(kvs) > rmark) {
+                if (PMIX_REMOTE != scope) {
+                    return PMIX_SUCCESS;
+                }
+                /* a same-node rank, which this scope excluded */
+                excluded = true;
+                drain_from(kvs, rmark);
+            }
+            rc = modex_fetch(job, rnk, key, qualifiers, nqual, kvs);
+            if (PMIX_ERR_NOMEM == rc) {
+                return rc;
+            }
+            if (pmix_list_get_size(kvs) == rmark) {
+                continue;
+            }
+            const pmix_gds_base_locality_t where =
+                pmix_gds_base_locality_or_scope(rank_locality(job, rnk), scope);
+            /* A rank the reader's scope excludes - one on another node for
+             * PMIX_LOCAL, one on ours for PMIX_REMOTE - is not searched at
+             * all, and that is final: no commit changes a contradiction. */
+            if (pmix_gds_base_scope_contradicts(scope, where)) {
+                excluded = true;
+                drain_from(kvs, rmark);
+                continue;
+            }
+            /* the modex copy is what a reader on another node sees */
+            if (PMIX_GDS_LOC_LOCAL != where) {
+                return PMIX_SUCCESS;
+            }
+            /* Not visible: a same-node rank's PMIX_REMOTE copy under no
+             * scope. That says nothing on its own: the rank may have
+             * committed the key at PMIX_LOCAL since the last fence, and
+             * only the server has that yet. */
+            drain_from(kvs, rmark);
+        }
+        return excluded ? PMIX_ERR_EXISTS_OUTSIDE_SCOPE : PMIX_ERR_NOT_FOUND;
+    }
+
+    /* "everything from every rank": each rank gives what we may see of it */
+    for (pmix_rank_t rnk = 0; rnk < nranks; rnk++) {
+        const pmix_gds_base_locality_t loc =
+            pmix_gds_base_locality_or_scope(rank_locality(job, rnk), scope);
+
+        if (pmix_gds_base_scope_contradicts(scope, loc)) {
+            continue;
+        }
+        rc = visible_rank_data(job, rnk, loc, NULL, NULL, 0, kvs);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+    }
+    if (pmix_list_get_size(kvs) > mark) {
+        return PMIX_SUCCESS;
+    }
+    return excluded ? PMIX_ERR_EXISTS_OUTSIDE_SCOPE : PMIX_ERR_NOT_FOUND;
+}
+
+/* Which store a non-PMIx_Get fetch reads. */
+typedef enum {
+    STORE_JOB,
+    STORE_LOCAL,
+    STORE_MODEX
+} store_t;
+
+static pmix_status_t
+store_fetch(
+    pmix_gds_shmem3_job_t *job,
+    store_t store,
+    pmix_rank_t rank,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    switch (store) {
+        case STORE_JOB:
+            return job_fetch(job, rank, key, qualifiers, nqual, kvs);
+        case STORE_LOCAL:
+            return local_fetch(job, rank, key, qualifiers, nqual, kvs);
+        case STORE_MODEX:
+            return modex_fetch(job, rank, key, qualifiers, nqual, kvs);
+    }
+    return PMIX_ERR_NOT_FOUND;
+}
+
+/* One store, for a rank or - PMIX_RANK_UNDEF - for any rank, job-level
+ * data included on the job store's pass only (see the note on the
+ * PMIX_RANK_UNDEF sweep in docs/how-things-work/shmem3.rst, step 8f). */
+static pmix_status_t
+store_fetch_rank(
+    pmix_gds_shmem3_job_t *job,
+    store_t store,
+    pmix_rank_t rank,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+
+    if (PMIX_RANK_UNDEF != rank) {
+        return store_fetch(job, store, rank, key, qualifiers, nqual, kvs);
+    }
+    /* read once - see the note on the whole-job case above */
+    const pmix_rank_t nranks = job->nspace->nprocs;
+    for (pmix_rank_t rnk = 0; rnk < nranks; rnk++) {
+        rc = store_fetch(job, store, rnk, key, qualifiers, nqual, kvs);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        if (PMIX_SUCCESS == rc && NULL != key) {
+            return rc;
+        }
+    }
+    if (STORE_JOB == store) {
+        rc = job_fetch(job, PMIX_RANK_WILDCARD, key, qualifiers, nqual, kvs);
+    }
+    return rc;
+}
+
 static pmix_status_t
 shmem3_fetch_from_job(
     pmix_gds_shmem3_job_t *job,
@@ -964,6 +1442,7 @@ shmem3_fetch_from_job(
     pmix_info_t qualifiers[],
     size_t nqual,
     pmix_realm_t realm,
+    bool visibility,
     pmix_list_t *kvs
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
@@ -1001,32 +1480,6 @@ shmem3_fetch_from_job(
     if (PMIX_UNLIKELY(NULL == jobhead)) {
         return PMIX_ERR_NOT_FOUND;
     }
-    const bool have_job = true;
-
-    /* Modex data are stored in PMIX_REMOTE, but there is no single table
-     * to name here: the modex is a chain of generations, and modex_fetch()
-     * walks it. Everything past "doover" therefore dispatches on the
-     * useremote flag, and "ht" is only ever read on the local side. */
-    // Every index in these tables was minted by the server against the
-    // keyindex living in the same segment, never against this process's
-    // global one, so a read has to translate through that same table.
-    // See the comment on pmix_gds_shmem3_shared_modex_data_t.keyindex.
-    //
-    // Every segment carries its own, which is what lets a read of shared
-    // data be independent of pmix_globals.keyindex - a structure the
-    // progress thread rewrites. The modex side of that lives in
-    // modex_fetch(), which has to pair each generation's table with that
-    // generation's index; only the job segment's is needed here.
-    /* There is modex data to read exactly when a generation has been
-     * published. The build slot says nothing about that: a generation
-     * under construction is not readable, and a published one has
-     * already left the slot. */
-    const bool have_modex =
-        NULL != pmix_gds_shmem3_chain_head(&job->modex_chain);
-    /* Which store the lookup below is against. This cannot be inferred
-     * from ht any more: the modex is a chain of generations rather than
-     * one table, and its newest may be absent while older ones are not. */
-    bool useremote = false;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.
@@ -1137,172 +1590,113 @@ shmem3_fetch_from_job(
         }
     }
 
-    /* Which store answers. Neither is named by a table any more - both
-     * are chains, reached through job_fetch() and modex_fetch() - so
-     * this only has to say which. */
-    if (PMIX_INTERNAL == scope ||
-        PMIX_LOCAL == scope ||
-        PMIX_GLOBAL == scope ||
-        PMIX_SCOPE_UNDEF == scope ||
-        PMIX_RANK_WILDCARD == proc->rank) {
-        useremote = false;
+    /* A request for "everything" from data the server left a value out
+     * of cannot be answered here - see pmix_gds_shmem3_segment_can_hold().
+     * The server has all of it. Both this and the tombstone test below
+     * decline on a client only: the server reads its segments to merge
+     * them UNDER its own store (_satisfy_request in pmix_server_get.c),
+     * which holds every value left out of a segment and is current, so
+     * declining there left its answer with the host's data and nothing
+     * the process posted. */
+    const bool server = PMIX_PEER_IS_SERVER(pmix_globals.mypeer);
+
+    if (NULL == key && !server && job_incomplete(job)) {
+        return PMIX_ERR_NOT_FOUND;
     }
-    else if (PMIX_REMOTE == scope) {
-        useremote = true;
+
+    /* Our own put data is in our own store, which is current: a shared
+     * chain carries only what we had committed by the last fence. So of
+     * our own rank, only what the host said about it is read here. */
+    if (PMIX_RANK_IS_VALID(proc->rank) && pmix_gds_base_is_me(proc)) {
+        return job_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
     }
-    else {
+
+    /* Nor can an aggregate over a rank whose key has been withdrawn. A
+     * tombstone hides a deleted key, but also one replaced since the last
+     * fence (see
+     * server_local_committed()) - whose new value only the server has yet.
+     * A keyed get of it misses and asks the server; an aggregate would
+     * simply come back without it. So an aggregate over a rank with a
+     * tombstone - over any rank, for PMIX_RANK_UNDEF - goes to the server,
+     * whose store is current. Deletions and overwrites are rare enough
+     * that this costs little. */
+    if (NULL == key && !server && has_tombstone(job, proc->rank)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* A PMIx_Get of another process's data - see visible_fetch_rank(). */
+    if (visibility && visibility_applies(proc, scope, key)) {
+        if (PMIX_RANK_UNDEF == proc->rank) {
+            return visible_fetch_any(job, scope, key, qualifiers, nqual, kvs);
+        }
+        return visible_fetch_rank(job, proc->rank, scope, key, qualifiers, nqual, kvs);
+    }
+
+    /* Everything else reads the stores as the scope names them: the job's
+     * data, the local chain (PMIX_LOCAL and PMIX_GLOBAL puts by this
+     * node's processes), the modex (PMIX_REMOTE and PMIX_GLOBAL puts by
+     * all). A wildcard rank or PMIX_INTERNAL is job data only. */
+    store_t stores[3];
+    size_t nstores = 0;
+    if (PMIX_INTERNAL == scope || PMIX_RANK_WILDCARD == proc->rank) {
+        stores[nstores++] = STORE_JOB;
+    } else if (PMIX_LOCAL == scope) {
+        stores[nstores++] = STORE_JOB;
+        stores[nstores++] = STORE_LOCAL;
+    } else if (PMIX_REMOTE == scope) {
+        stores[nstores++] = STORE_MODEX;
+    } else if (PMIX_GLOBAL == scope || PMIX_SCOPE_UNDEF == scope) {
+        stores[nstores++] = STORE_JOB;
+        stores[nstores++] = STORE_LOCAL;
+        stores[nstores++] = STORE_MODEX;
+    } else {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
 
-doover:
-    // If rank=PMIX_RANK_UNDEF, then we need to search all
-    // known ranks for this nspace as any one of them could
-    // be the source.
-    if (PMIX_RANK_UNDEF == proc->rank && (useremote ? have_modex : have_job)) {
-        /* read once - see the note on the other sweep below */
-        const pmix_rank_t nranks = job->nspace->nprocs;
-        for (pmix_rank_t rnk = 0; rnk < nranks; rnk++) {
-            rc = useremote
-                     ? modex_fetch(job, rnk, key, qualifiers, nqual, kvs)
-                     : job_fetch(job, rnk, key, qualifiers, nqual, kvs);
-            if (PMIX_ERR_NOMEM == rc) {
-                return rc;
-            }
-            if (PMIX_SUCCESS == rc && NULL != key) {
-                return rc;
-            }
+    for (size_t n = 0; n < nstores; n++) {
+        rc = store_fetch_rank(job, stores[n], proc->rank, key, qualifiers, nqual, kvs);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
         }
-        // Job-level data is filed under no rank at all - it sits in the
-        // local table under PMIX_RANK_WILDCARD - so the per-rank sweep
-        // above cannot reach it, and PMIX_RANK_UNDEF means "anything in
-        // this nspace" rather than "any rank in this nspace". Without
-        // this, PMIx_Get(NULL, key, ...) could not read job-level data
-        // at all; it worked only because get_data() in
-        // src/client/pmix_client_get.c retries at PMIX_RANK_WILDCARD on
-        // the client's behalf.
-        //
-        // Only on the pass that reads that table, though. The doover
-        // below returns here for the modex, where job data never is, and
-        // repeating the fetch would collect the same value twice - the
-        // client's process_values() reads a count above one as "an
-        // aggregate of everything this proc put", so the application
-        // would get a PMIX_DATA_ARRAY of duplicates where it asked for a
-        // scalar. gds/hash had exactly that defect for exactly this
-        // reason.
-        if (!useremote) {
-            if (NULL == key) {
-                rc = job_fetch(job, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
-            }
-            else {
-                rc = job_fetch(job, PMIX_RANK_WILDCARD, key, qualifiers, nqual,
-                    kvs);
-                if (PMIX_SUCCESS == rc) {
-                    return rc;
-                }
-            }
+        if (PMIX_SUCCESS != rc) {
+            continue;
         }
-        else {
-            rc = PMIX_ERR_NOT_FOUND;
-        }
-    }
-    else {
-        if (useremote ? have_modex : have_job) {
-            rc = useremote
-                     ? modex_fetch(job, proc->rank, key, qualifiers, nqual, kvs)
-                     : job_fetch(job, proc->rank, key, qualifiers, nqual,
-                                 kvs);
-        }
-        else {
-            rc = PMIX_ERR_NOT_FOUND;
-        }
-    }
-    if (PMIX_SUCCESS == rc) {
         if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
-            // there is no need to check other scopes for
-            // reserved keys
+            // there is no need to check other scopes for reserved keys
             return PMIX_SUCCESS;
         }
-        if (PMIX_GLOBAL == scope) {
-            if (!useremote) {
-                // We need to do this again for the remote data.
-                useremote = true;
-                goto doover;
-            }
-        }
-    }
-    else {
-        if (PMIX_GLOBAL == scope || PMIX_SCOPE_UNDEF == scope) {
-            if (!useremote) {
-                // We need to also try the remote data.
-                /* Say which store the retry is against, exactly as the
-                 * success path above does. Everything past "doover"
-                 * dispatches on this flag rather than on ht, because the
-                 * modex is a chain of generations rather than one table;
-                 * arriving there with it still false ran the JOB fetch
-                 * over the MODEX table, paired with the job segment's key
-                 * index. The indices are minted per segment, so that
-                 * pairing does not resolve the key and the lookup misses
-                 * whatever is there.
-                 *
-                 * It missed on the ordinary path, not a corner: an
-                 * unqualified PMIx_Get arrives as PMIX_SCOPE_UNDEF, finds
-                 * nothing local, and reaches the modex only through here.
-                 * Every remote key therefore went up to the server, and a
-                 * request for a rank that had already finished never came
-                 * back - a dmdx tracker is created with no timeout - so
-                 * the caller blocked forever. That is an 8-rank job over
-                 * 8 nodes hanging better than half the time. */
-                useremote = true;
-                goto doover;
-            }
+        /* PMIX_GLOBAL collects from every store, as it always has; the
+         * rest stop at the first that answers */
+        if (PMIX_GLOBAL != scope) {
+            break;
         }
     }
 
-    if (0 == pmix_list_get_size(kvs)) {
-        /* if we didn't find it and the rank was valid, then
-         * check to see if the data exists in a different scope.
-         * This is done to avoid having the process go into a
-         * timeout wait when the data will never appear within
-         * the specified scope */
-        if (PMIX_RANK_IS_VALID(proc->rank)) {
-            pmix_kval_t *kv;
-            if (PMIX_LOCAL == scope) {
-                if (have_modex) {
-                    /* check the remote scope */
-                    rc = modex_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
-                    if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
-                        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
-                            PMIX_RELEASE(kv);
-                        }
-                        rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
-                    } else {
-                        rc = PMIX_ERR_NOT_FOUND;
-                    }
-                } else {
-                    rc = PMIX_ERR_NOT_FOUND;
-                }
-            } else if (PMIX_REMOTE == scope) {
-                /* check the local scope */
-                rc = job_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
-                if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
-                    while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
-                        PMIX_RELEASE(kv);
-                    }
-                    rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
-                } else {
-                    rc = PMIX_ERR_NOT_FOUND;
-                }
-            }
+    if (0 < pmix_list_get_size(kvs)) {
+        // since we found something, the fetch is a success, whatever the
+        // last store we tried said
+        return PMIX_SUCCESS;
+    }
+    /* Not found where the scope names. If the rank was valid, say whether
+     * it is in a different scope, so a server does not wait for data that
+     * will never appear in this one. */
+    rc = PMIX_ERR_NOT_FOUND;
+    if (PMIX_RANK_IS_VALID(proc->rank) &&
+        (PMIX_LOCAL == scope || PMIX_REMOTE == scope)) {
+        if (PMIX_LOCAL == scope) {
+            rc = modex_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
         } else {
-            rc = PMIX_ERR_NOT_FOUND;
+            rc = job_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOMEM != rc) {
+                rc = local_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
+            }
         }
-    } else {
-        // since we found something, the fetch is a success.
-        // We need to set the status here because the fetch on the
-        // last scope we tried might not have succeeded, but
-        // we found things in an earlier scope we tried
-        rc = PMIX_SUCCESS;
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        rc = (0 < pmix_list_get_size(kvs)) ? PMIX_ERR_EXISTS_OUTSIDE_SCOPE : PMIX_ERR_NOT_FOUND;
+        drain_from(kvs, 0);
     }
     return rc;
 }
@@ -1340,6 +1734,7 @@ pmix_gds_shmem3_fetch(
     pmix_info_t qualifiers[],
     size_t nqual,
     pmix_realm_t realm,
+    bool visibility,
     pmix_list_t *kvs
 ) {
     pmix_gds_shmem3_job_t *job = NULL;
@@ -1350,7 +1745,7 @@ pmix_gds_shmem3_fetch(
         return rc;
     }
     rc = shmem3_fetch_from_job(job, pr, proc, scope, copy, key,
-                               qualifiers, nqual, realm, kvs);
+                               qualifiers, nqual, realm, visibility, kvs);
     PMIX_RELEASE(job);
     return rc;
 }

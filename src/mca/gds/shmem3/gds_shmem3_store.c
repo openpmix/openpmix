@@ -165,6 +165,11 @@ cache_node_info(
                 goto out;
             }
             // Need to cache this value as well.
+            /* a value whose payload lives outside it cannot be shared -
+             * see pmix_gds_shmem3_segment_can_hold() */
+            if (pmix_gds_shmem3_hold_back(&info[j].value)) {
+                continue;
+            }
             pmix_kval_t *kv = newkval(info[j].key, tma);
             if (PMIX_UNLIKELY(!kv)) {
                 rc = PMIX_ERR_NOMEM;
@@ -180,6 +185,11 @@ cache_node_info(
             pmix_list_append(cache, &kv->super);
         }
         else {
+            /* a value whose payload lives outside it cannot be shared -
+             * see pmix_gds_shmem3_segment_can_hold() */
+            if (pmix_gds_shmem3_hold_back(&info[j].value)) {
+                continue;
+            }
             pmix_kval_t *kv = newkval(info[j].key, tma);
             if (PMIX_UNLIKELY(!kv)) {
                 rc = PMIX_ERR_NOMEM;
@@ -325,6 +335,11 @@ store_app_array(
             }
         }
         else {
+            /* a value whose payload lives outside it cannot be shared -
+             * see pmix_gds_shmem3_segment_can_hold() */
+            if (pmix_gds_shmem3_hold_back(&info[j].value)) {
+                continue;
+            }
             pmix_kval_t *kv = newkval(info[j].key, tma);
             if (PMIX_UNLIKELY(!kv)) {
                 rc = PMIX_ERR_NOMEM;
@@ -424,6 +439,9 @@ store_proc_data(
         if (j == idpos) {
             continue;
         }
+        if (pmix_gds_shmem3_hold_back(&info[j].value)) {
+            continue;
+        }
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
         kv->key = info[j].key;
         kv->value = &info[j].value;
@@ -520,6 +538,7 @@ pmix_gds_shmem3_store_session_info(
     pmix_info_t *const info = (pmix_info_t *)val->data.darray->array;
 
     pmix_tma_t *const tma = pmix_gds_shmem3_get_session_tma(job);
+    const size_t heldback = pmix_gds_shmem3_heldback_count();
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!ncache)) {
         rc = PMIX_ERR_NOMEM;
@@ -542,6 +561,11 @@ pmix_gds_shmem3_store_session_info(
             }
         }
         else {
+            /* a value whose payload lives outside it cannot be shared -
+             * see pmix_gds_shmem3_segment_can_hold() */
+            if (pmix_gds_shmem3_hold_back(&info[j].value)) {
+                continue;
+            }
             pmix_kval_t *kval = newkval(info[j].key, tma);
             if (PMIX_UNLIKELY(!kval)) {
                 rc = PMIX_ERR_NOMEM;
@@ -561,6 +585,9 @@ pmix_gds_shmem3_store_session_info(
     pmix_gds_shmem3_nodeinfo_t *ni;
     while ((ni = (pmix_gds_shmem3_nodeinfo_t *)pmix_list_remove_first(ncache))) {
         pmix_list_append(sesh->smdata->nodeinfo, &ni->super);
+    }
+    if (heldback != pmix_gds_shmem3_heldback_count()) {
+        sesh->smdata->incomplete = true;
     }
     /* The session's data is in its segment now, so no later source may
      * write it - see the first-writer-wins note above. */
@@ -630,6 +657,7 @@ pmix_gds_shmem3_store_local_job_data_in_shmem3(
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_hash_table_t *const local_ht = job->smdata->local_hashtab;
     pmix_tma_t *const tma = pmix_obj_get_tma(&local_ht->super);
+    const size_t heldback = pmix_gds_shmem3_heldback_count();
 
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, job_data, pmix_kval_t) {
@@ -665,6 +693,11 @@ pmix_gds_shmem3_store_local_job_data_in_shmem3(
                 break;
             }
         }
+        else if (pmix_gds_shmem3_hold_back(kvi->value)) {
+            /* left in the server's own datastore - see
+             * pmix_gds_shmem3_segment_can_hold() */
+            continue;
+        }
         else {
             pmix_kval_t *kv = newkval(kvi->key, tma);
             if (PMIX_UNLIKELY(!kv)) {
@@ -688,6 +721,9 @@ pmix_gds_shmem3_store_local_job_data_in_shmem3(
                 break;
             }
         }
+    }
+    if (heldback != pmix_gds_shmem3_heldback_count()) {
+        job->smdata->incomplete = true;
     }
     if (PMIX_SUCCESS == rc) {
         // Segments are ready for use.
