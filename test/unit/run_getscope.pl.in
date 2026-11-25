@@ -1,0 +1,155 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Check which of a peer's values PMIx_Get returns for each scope a get can
+# name. A single server (test/simple/simptest) forks four clients
+# (examples/get_scope), all on one node. Each publishes one key at
+# PMIX_LOCAL and PMIX_REMOTE with different values, one key at each of
+# those scopes alone, and one at PMIX_GLOBAL, commits, and fences with data
+# collection. Every client then asks every peer for each key under no scope
+# qualifier and under each of PMIX_LOCAL, PMIX_REMOTE and PMIX_GLOBAL.
+#
+# A peer on the requester's node may be seen at PMIX_LOCAL and PMIX_GLOBAL
+# scope only: its PMIX_REMOTE data is not shared with its own node, and a
+# PMIX_REMOTE qualifier - "a target on another node" - finds nothing for it.
+# See PMIx_Put(3) and PMIx_Get(3), and examples/get_scope.c for the full
+# set of expected answers.
+#
+# The run is made once per key/scope combination, so each answer is the
+# first a client asks of that peer and cannot have come from a cache, and
+# then once with every combination asked of every peer in turn, which is
+# what a client that has cached earlier answers sees. A library that hands
+# a same-node peer the PMIX_REMOTE copy, or keeps answering from a copy it
+# cached under another scope, fails one or the other.
+#
+# All of that is done twice. By default a server completes a fence whose
+# participants are all its own clients by itself, without the host, so no
+# modex is ever stored - every get goes to the server, and on Linux the
+# gds/shmem3 client never reads a modex segment. With
+# pmix_server_fence_localonly_opt off the fence goes through the host, its
+# data is stored as a modex, and a gds/shmem3 client answers from the
+# segment its server built - the path openmpi#14873 was reported against,
+# where a same-node peer was handed the PMIX_REMOTE copy.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen hands us
+# every possible component directory in PMIX_COMPONENT_LIBRARY_PATHS; turn each
+# into an absolute path to the built component so the MCA base can find them
+# without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from its own directory; run from there and name the
+# client (built under examples/) by absolute path so simptest can exec it.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+my $client = $mybuilddir . "/examples/get_scope";
+my $nprocs = 4;
+my $ncombos = 20;
+
+# find the timeout or gtimeout cmd so we can bound each run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 130 120 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 130 120 ";
+            last;
+        }
+    }
+}
+
+# Run simptest once with the given client arguments. Returns the merged
+# output and the exit status; a Perl alarm bounds the wait when no
+# timeout(1) was found.
+sub run_once {
+    my @args = @_;
+    my @cmd = ("./simptest", "-n", "$nprocs", "-e", "$client", @args);
+    my $use_alarm = 0;
+    if ("" ne $timeout_cmd) {
+        unshift(@cmd, split(' ', $timeout_cmd));
+    } else {
+        $use_alarm = 1;
+    }
+    print "@cmd\n";
+
+    my $pid = open(my $fh, "-|");
+    defined($pid) or die "cannot fork: $!";
+    if (0 == $pid) {
+        open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+        exec(@cmd) or die "cannot exec simptest: $!";
+    }
+    my $output = "";
+    my $timed_out = 0;
+    eval {
+        local $SIG{ALRM} = sub { die "alarm\n"; };
+        alarm(150) if $use_alarm;
+        local $/;            # slurp the whole stream
+        $output = <$fh>;
+        alarm(0);
+    };
+    if ($@) {
+        $timed_out = 1;
+        kill('KILL', $pid);
+    }
+    close($fh);
+    $output = "" unless defined($output);
+    my $status = $timed_out ? 1 : ($? >> 8);
+    if ($timed_out) {
+        $output .= "\nFAIL: simptest exceeded the time limit\n";
+    }
+    return ($output, $status);
+}
+
+my $nfail = 0;
+my @runs;
+foreach my $opt ("1", "0") {
+    for (my $c = 0; $c < $ncombos; $c++) {
+        push(@runs, [$opt, "$c"]);
+    }
+    push(@runs, [$opt]);
+}
+
+foreach my $r (@runs) {
+    my ($opt, @args) = @$r;
+    my $label = (0 == scalar(@args)) ? "every combination in turn" : "combination $args[0]";
+    $label .= ("1" eq $opt) ? ", fence completed by the server"
+                            : ", fence through the host";
+    $ENV{'PMIX_MCA_pmix_server_fence_localonly_opt'} = $opt;
+    my ($output, $status) = run_once(@args);
+    my $npass = () = ($output =~ /getscope: rank \d+ checked \d+ gets: PASS/g);
+    my $server_done = ($output =~ /Test finished OK!/);
+    if (0 != $status || $npass != $nprocs || !$server_done) {
+        print $output . "\n";
+        print "FAIL: $label: exit $status, $npass/$nprocs clients passed\n";
+        $nfail++;
+    } else {
+        print "PASS: $label\n";
+    }
+}
+
+if (0 != $nfail) {
+    print "FAIL: $nfail of " . scalar(@runs) . " runs returned the wrong value for some scope\n";
+    exit(1);
+}
+print "PASS: every scope returned the value the peer's location allows\n";
+exit(0);
