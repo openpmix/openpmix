@@ -38,14 +38,18 @@
 #include "include/pmix.h"
 #include "src/include/pmix_globals.h"
 #include "src/hwloc/pmix_hwloc.h"
+#include "src/util/pmix_argv.h"
 
 #include <hwloc.h>
 
 #include <ctype.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* The node whose topology we claim to be reading.  Deliberately NOT the
  * hostname this test process is running under: a device uuid names the node
@@ -1835,6 +1839,265 @@ static void test_aws_p6_b200(const char *dir)
     free_topo(&topo);
 }
 
+/* A GPU hwloc could not name, named from the NVIDIA driver instead.
+ *
+ * pmix_hwloc_add_driver_identities() reads
+ * <root>/driver/nvidia/gpus/<busid>/information and records the "GPU UUID"
+ * line on the PCI function as NVIDIAUUID.  These tests build that tree under
+ * a temporary directory, in the format the driver writes, for three
+ * fixtures:
+ *
+ *   drm-4gpu    four H200s as a distro hwloc sees them - render and card
+ *               nodes, no identity.  Three get a driver file; the fourth
+ *               gets the all-'?' identity the driver prints for a GPU it has
+ *               not initialized, and must stay unnamed.
+ *   nvml-4gpu   the same machine with NVML, and so the same bus ids.  NVML's
+ *               identity is the authority and must not be touched, however
+ *               the driver files disagree.
+ *   slingshot   four A100s that are bare PCI functions, no OS device at
+ *               all.  An identity on the function names them too.
+ */
+static bool write_driver_file(const char *root, const char *busid, const char *uuid,
+                              char ***made)
+{
+    char path[1024];
+    const char *parts[] = {"driver", "nvidia", "gpus", busid, NULL};
+    size_t n, len;
+    FILE *fp;
+
+    len = (size_t) snprintf(path, sizeof(path), "%s", root);
+    for (n = 0; NULL != parts[n]; n++) {
+        len += (size_t) snprintf(path + len, sizeof(path) - len, "/%s", parts[n]);
+        if (0 == mkdir(path, 0700)) {
+            /* only what this test created is its to remove */
+            PMIx_Argv_append_nosize(made, path);
+        } else if (EEXIST != errno) {
+            return false;
+        }
+    }
+    snprintf(path + len, sizeof(path) - len, "/information");
+    fp = fopen(path, "w");
+    if (NULL == fp) {
+        return false;
+    }
+    /* the driver's own layout: a label, a colon, and tab/space padding */
+    fprintf(fp, "Model: \t\t NVIDIA H200\n"
+                "IRQ:   \t\t 112\n"
+                "GPU UUID: \t %s\n"
+                "Video BIOS: \t 96.00.af.00.01\n"
+                "Bus Type: \t PCIe\n"
+                "DMA Size: \t 52 bits\n"
+                "DMA Mask: \t 0xfffffffffffff\n"
+                "Bus Location: \t %s\n"
+                "Device Minor: \t 0\n"
+                "GPU Excluded:\t No\n", uuid, busid);
+    fclose(fp);
+    PMIx_Argv_append_nosize(made, path);
+    return true;
+}
+
+static void remove_driver_tree(const char *root, char **made)
+{
+    int n;
+
+    for (n = PMIx_Argv_count(made) - 1; 0 <= n; n--) {
+        if (0 != unlink(made[n])) {
+            (void) rmdir(made[n]);
+        }
+    }
+    PMIx_Argv_free(made);
+    (void) rmdir(root);
+}
+
+static void test_driver_identities(const char *dir)
+{
+    static const char *uuids[] = {
+        "GPU-0a1b2c3d-0000-1111-2222-333344445555",
+        "GPU-0a1b2c3d-0000-1111-2222-333344445556",
+        "GPU-0a1b2c3d-0000-1111-2222-333344445557",
+        /* split so no "??-" trigraph appears in the source */
+        "GPU-????????" "-????" "-????" "-????" "-????????????",
+    };
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, n;
+    char path[1024], root[1024], busids[4][32], *xml = NULL;
+    char *nvml[4] = {NULL, NULL, NULL, NULL};
+    char **made = NULL;
+    const char *tmp;
+    hwloc_topology_t t;
+    pmix_status_t rc;
+    unsigned added;
+    bool good;
+    int len;
+
+    tmp = getenv("TMPDIR");
+    snprintf(root, sizeof(root), "%s/pmix-nvproc-XXXXXX", (NULL == tmp) ? "/tmp" : tmp);
+    if (NULL == mkdtemp(root)) {
+        ok(false, "driver: a scratch procfs root can be made");
+        return;
+    }
+
+    ok(0 == pmix_hwloc_add_driver_identities(NULL, root), "driver: no topology, nothing added");
+
+    snprintf(path, sizeof(path), "%s/drm-4gpu.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "driver: drm-4gpu.xml loads");
+        remove_driver_tree(root, made);
+        return;
+    }
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    good = (PMIX_SUCCESS == rc && 4 == ndevs);
+    ok(good, "driver: drm-4gpu has four GPUs");
+    for (n = 0; good && n < 4; n++) {
+        snprintf(busids[n], sizeof(busids[n]), "%s", devs[n].busid);
+        good = (NULL == devs[n].vendor_id);
+    }
+    ok(good, "driver: and none of them can be named before the driver is asked");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+    if (4 != ndevs) {
+        free_topo(&topo);
+        remove_driver_tree(root, made);
+        return;
+    }
+
+    /* an empty root - no driver loaded - names nothing */
+    ok(0 == pmix_hwloc_add_driver_identities((hwloc_topology_t) topo.topology, root),
+       "driver: no driver files, nothing added");
+
+    for (n = 0; n < 4; n++) {
+        if (!write_driver_file(root, busids[n], uuids[n], &made)) {
+            ok(false, "driver: the fake driver tree can be written");
+        }
+    }
+
+    added = pmix_hwloc_add_driver_identities((hwloc_topology_t) topo.topology, root);
+    ok(3 == added, "driver: three initialized GPUs are named, the uninitialized one is not");
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    good = (PMIX_SUCCESS == rc && 4 == ndevs);
+    for (n = 0; good && n < 3; n++) {
+        good = (NULL != devs[n].vendor_id && 0 == strcmp(devs[n].vendor_id, uuids[n])
+                && NULL != devs[n].vendor && 0 == strcmp(devs[n].vendor, "NVIDIA")
+                && NULL != devs[n].selector && 0 == strcmp(devs[n].selector, uuids[n]));
+    }
+    ok(good, "driver: each named GPU carries the driver's identity as NVML would give it");
+    ok(good && NULL == devs[3].vendor_id && NULL == devs[3].vendor
+           && NULL == devs[3].selector,
+       "driver: a '?' identity leaves the GPU unnamed");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* the identity is a name a caller may use */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, uuids[1], &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs && NULL != devs[0].busid
+           && 0 == strcmp(devs[0].busid, busids[1]),
+       "driver: a GPU is found by the identity the driver gave it");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* asking again records nothing twice */
+    ok(0 == pmix_hwloc_add_driver_identities((hwloc_topology_t) topo.topology, root),
+       "driver: a second pass adds nothing");
+
+    /* it travels: the HNP reads this topology as the XML the daemon sent */
+    good = (0 == hwloc_topology_export_xmlbuffer((hwloc_topology_t) topo.topology,
+                                                 &xml, &len, 0));
+    ok(good, "driver: the annotated topology exports");
+    if (good) {
+        good = (0 == hwloc_topology_init(&t));
+        if (good && (0 != hwloc_topology_set_xmlbuffer(t, xml, len)
+                     || 0 != hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT)
+                     || 0 != hwloc_topology_load(t))) {
+            hwloc_topology_destroy(t);
+            good = false;
+        }
+        hwloc_free_xmlbuffer((hwloc_topology_t) topo.topology, xml);
+    }
+    free_topo(&topo);
+    if (good) {
+        topo.topology = t;
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+        good = (PMIX_SUCCESS == rc && 4 == ndevs);
+        for (n = 0; good && n < 3; n++) {
+            good = (NULL != devs[n].vendor_id && 0 == strcmp(devs[n].vendor_id, uuids[n]));
+        }
+        if (NULL != devs) {
+            pmix_hwloc_release_devices(devs, ndevs);
+            devs = NULL;
+        }
+        free_topo(&topo);
+    }
+    ok(good, "driver: the identities survive the round trip through XML");
+
+    /* the same bus ids with NVML present: NVML's identity stands */
+    snprintf(path, sizeof(path), "%s/nvml-4gpu.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "driver: nvml-4gpu.xml loads");
+    } else {
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+        good = (PMIX_SUCCESS == rc && 4 == ndevs);
+        for (n = 0; good && n < 4; n++) {
+            good = (NULL != devs[n].vendor_id && 0 == strcmp(devs[n].busid, busids[n]));
+            if (good) {
+                nvml[n] = strdup(devs[n].vendor_id);
+            }
+        }
+        ok(good, "driver: nvml-4gpu is the same machine, already named");
+        if (NULL != devs) {
+            pmix_hwloc_release_devices(devs, ndevs);
+            devs = NULL;
+        }
+        ok(0 == pmix_hwloc_add_driver_identities((hwloc_topology_t) topo.topology, root),
+           "driver: a GPU NVML named is left alone");
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+        good = (PMIX_SUCCESS == rc && 4 == ndevs);
+        for (n = 0; good && n < 4; n++) {
+            good = (NULL != nvml[n] && NULL != devs[n].vendor_id
+                    && 0 == strcmp(devs[n].vendor_id, nvml[n]));
+        }
+        ok(good, "driver: and still carries NVML's identity");
+        if (NULL != devs) {
+            pmix_hwloc_release_devices(devs, ndevs);
+            devs = NULL;
+        }
+        free_topo(&topo);
+    }
+    for (n = 0; n < 4; n++) {
+        free(nvml[n]);
+    }
+
+    /* a GPU with no OS device at all is named from its function */
+    snprintf(path, sizeof(path), "%s/slingshot.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "driver: slingshot.xml loads");
+    } else {
+        (void) write_driver_file(root, "0000:41:00.0", uuids[0], &made);
+        ok(1 == pmix_hwloc_add_driver_identities((hwloc_topology_t) topo.topology, root),
+           "driver: a bare 3D controller is named");
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, "0000:41:00.0",
+                                    &devs, &ndevs);
+        ok(PMIX_SUCCESS == rc && 1 == ndevs && NULL != devs[0].vendor_id
+               && 0 == strcmp(devs[0].vendor_id, uuids[0]) && NULL != devs[0].selector
+               && 0 == strcmp(devs[0].selector, uuids[0])
+               && NULL != devs[0].dev.osname && 0 == strcmp(devs[0].dev.osname, "0000:41:00.0"),
+           "driver: and is still named by its bus id, now with an identity and a selector");
+        if (NULL != devs) {
+            pmix_hwloc_release_devices(devs, ndevs);
+            devs = NULL;
+        }
+        free_topo(&topo);
+    }
+
+    remove_driver_tree(root, made);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -1871,6 +2134,7 @@ int main(int argc, char **argv)
     test_3d_controllers(dir);
     test_aws_p5en(dir);
     test_aws_p6_b200(dir);
+    test_driver_identities(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);

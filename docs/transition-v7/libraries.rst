@@ -166,7 +166,10 @@ Spawning
   mapped to GPUs, PMIx sets ``CUDA_VISIBLE_DEVICES``,
   ``ROCR_VISIBLE_DEVICES``, or ``ZE_AFFINITY_MASK`` in its environment
   at launch, naming those devices. A value already set is replaced. A
-  process not mapped to a GPU is left alone.
+  process not mapped to a GPU is left alone. An NVIDIA GPU is named by the
+  ``GPU-<uuid>`` hwloc's NVML backend records or, where hwloc was built
+  without NVML, by the same identity read from the NVIDIA driver's
+  ``/proc/driver/nvidia/gpus/<bus id>/information``.
 * **NIC selection is set for you too.** When a process is mapped to
   network devices, PMIx names them to the libraries that use them, each in
   the form that library matches, and only for the fabrics whose devices

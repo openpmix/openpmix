@@ -458,6 +458,32 @@ Two consequences that are load-bearing:
   info count, which `hwloc_topology_diff_build()` calls "too complex" —
   while the *values* are per-node and must be read from that node's own
   topology.
+- **An NVIDIA GPU's identity can be read from the driver instead.**
+  `pmix_hwloc_add_driver_identities()` walks the NVIDIA display-class PCI
+  functions that carry no identity, reads the `GPU UUID` line of
+  `<root>/driver/nvidia/gpus/<busid>/information` (`root` is `/proc`
+  unless a test says otherwise), and records it on the **function** as
+  `NVIDIAUUID` - the key and value NVML would have written. That is why
+  `vendor_id_of()` and `osdev_named()` read the PCI object as well as its
+  OS devices, and why a GPU with no OS device at all can now come back
+  with an identity and a selector. Three rules govern it:
+  - **Discovered topologies only.** The identity is this node's, so it is
+    recorded by whoever just *sensed* the machine - `setup_topology()`'s
+    discovery branch here, and `prte_hwloc_base_get_topology()` in PRRTE,
+    whose topology PMIx is handed rather than discovering - and never on
+    a topology read from a file, a buffer or another node, which would
+    stamp this node's GPUs onto someone else's description. It runs before
+    the topology is exported, so the identity travels with the XML.
+  - **NVML wins.** A function that already carries an identity on itself
+    or any of its OS devices is skipped, so the value is never recorded
+    twice and never contradicts NVML.
+  - **Only a well-formed identity is recorded.** The driver prints the
+    `GPU-<uuid>` shape with every digit a `?` until the GPU is
+    initialized, and such a value names nothing to CUDA; anything that is
+    not `GPU-` plus hex digits and dashes is ignored and the GPU stays
+    unnamed, as it was.
+  Covered by `test_driver_identities` against `drm-4gpu`, `nvml-4gpu`
+  and `slingshot`, with a fake procfs tree written under `TMPDIR`.
 - **A NIC's identity is its name, and it is never missing.** For a
   network or OpenFabrics device `pmix_hwloc_device_t.selector` is the OS
   device name, because that is what every fabric library's

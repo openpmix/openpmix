@@ -110,7 +110,10 @@ typedef struct {
      * It is NULL far more often than not.  hwloc records it only from its
      * vendor backends (NVML, RSMI, Level Zero), so a topology gathered by
      * an hwloc built without them describes the same hardware with no way
-     * to name any of it.  Whether that is fatal is the caller's policy
+     * to name any of it - except an NVIDIA GPU's, which the driver itself
+     * publishes and pmix_hwloc_add_driver_identities() records on the PCI
+     * function when the topology is discovered.  Whether that is fatal is
+     * the caller's policy
      * question, not this layer's - but note that whether the field CAN be
      * filled is a property of the topology rather than of the node, since
      * an absent attribute changes the topology's shape.  Its VALUE is
@@ -212,8 +215,10 @@ typedef struct {
  * 0x0302) on a node whose hwloc lacks the vendor backend and whose driver
  * makes no render node.  It is still reported as a GPU, named by its PCI
  * bus id (osname and busid are the same string), with a uuid in the usual
- * GPU form and with vendor_id, vendor and selector NULL - the topology
- * gives nothing to fill them from.
+ * GPU form and with vendor_id, vendor and selector NULL unless the driver's
+ * identity was recorded on the function (see
+ * pmix_hwloc_add_driver_identities()) - otherwise the topology gives
+ * nothing to fill them from.
  *
  * Devices come back ordered by PCI bus id ascending, with any device having
  * no PCI ancestor last, ordered by name.  That ordering is deterministic,
@@ -247,6 +252,39 @@ PMIX_EXPORT pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
                                                  size_t *ndevs);
 
 PMIX_EXPORT void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs);
+
+/* Record the identity of each NVIDIA GPU that hwloc found but could not
+ * name, reading it from the NVIDIA driver instead.
+ *
+ * hwloc records a GPU's vendor identity only from its NVML backend, which a
+ * distribution's hwloc is usually built without.  The GPU is still in the
+ * topology - as a render node, an OpenCL device, or a bare PCI function -
+ * and is still placed correctly, but it cannot be named to CUDA, which
+ * accepts an identity or an index into an order PMIx cannot reproduce.  The
+ * NVIDIA kernel driver publishes the identity anyway, in
+ * <root>/driver/nvidia/gpus/<busid>/information, keyed by the PCI bus id
+ * that hwloc always has.  This reads it and records it on the PCI function
+ * as "NVIDIAUUID" - the key and the value NVML would have written - so
+ * every reader of the topology, pmix_hwloc_get_devices() included, names
+ * the device as though NVML had been there.
+ *
+ * Call it only on a topology just DISCOVERED on this node, never on one
+ * loaded from a file or received from elsewhere: the identity read is this
+ * node's, and stamped onto another node's description it would name the
+ * wrong device.  Call it before the topology is exported, so the identity
+ * travels with it to whoever reads it remotely.
+ *
+ * A function that already carries an identity, from NVML or an earlier
+ * call, is left alone.  So is one the driver does not list - it is not
+ * loaded, or it hides the GPU from this container - or lists before the
+ * GPU is initialized, when it prints the identity as '?'s.  Such a GPU
+ * stays unnamed, exactly as it would have been.
+ *
+ * "root" is where procfs is mounted; NULL means "/proc".  Returns how many
+ * identities were recorded.
+ */
+PMIX_EXPORT unsigned pmix_hwloc_add_driver_identities(hwloc_topology_t topo,
+                                                      const char *root);
 
 /* Which Level Zero device hierarchy model this topology's GPUs were
  * enumerated under: "COMPOSITE" if the driver reported each card as one

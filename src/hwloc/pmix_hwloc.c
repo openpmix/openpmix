@@ -34,6 +34,7 @@
 #endif
 #include <time.h>
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdint.h>
@@ -604,6 +605,10 @@ tryself:
             rc = PMIX_ERR_NOT_SUPPORTED;
             goto discard;
         }
+        /* this is the one place we sensed the machine ourselves, so the
+         * driver's GPU identities belong to it - and the export below
+         * carries them to our clients */
+        (void) pmix_hwloc_add_driver_identities(pmix_globals.topology.topology, NULL);
         pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
         pmix_output_verbose(2, pmix_hwloc_output,
                             "%s:%s discovery complete - source %s", __FILE__, __func__,
@@ -2004,10 +2009,16 @@ static void vendor_id_of(hwloc_obj_t osdev, hwloc_obj_t pci,
     *id = NULL;
     *vendor = NULL;
 
-    if (vendor_id_read(osdev, id, vendor)) {
+    if (NULL != osdev && vendor_id_read(osdev, id, vendor)) {
         return;
     }
     if (NULL == pci) {
+        return;
+    }
+    /* the function itself carries the identity when it was read from the
+     * driver rather than recorded by a vendor backend - see
+     * pmix_hwloc_add_driver_identities() */
+    if (vendor_id_read(pci, id, vendor)) {
         return;
     }
     for (child = pci->io_first_child; NULL != child; child = child->next_sibling) {
@@ -2018,6 +2029,123 @@ static void vendor_id_of(hwloc_obj_t osdev, hwloc_obj_t pci,
             return;
         }
     }
+}
+
+/* Read the UUID the NVIDIA driver reports for the GPU at "busid" into
+ * "uuid" (of "len" bytes).  The driver publishes one file per GPU,
+ * <root>/driver/nvidia/gpus/<busid>/information, as "Label: value" lines,
+ * one of which is "GPU UUID".  That is the identity NVML reports and
+ * CUDA_VISIBLE_DEVICES accepts.
+ *
+ * Only a well-formed identity is accepted: "GPU-" followed by hex digits and
+ * dashes.  The driver fills the line in only once the GPU is initialized,
+ * and before that it prints the same shape with every digit a '?'; naming
+ * that to CUDA would select nothing. */
+static bool nvidia_driver_uuid(const char *root, const char *busid,
+                               char *uuid, size_t len)
+{
+    char path[PMIX_PATH_MAX], line[256];
+    const char *val;
+    size_t n, end;
+    bool found = false;
+    FILE *fp;
+
+    if (0 > snprintf(path, sizeof(path), "%s/driver/nvidia/gpus/%s/information",
+                     root, busid)
+        || sizeof(path) <= strlen(path)) {
+        return false;
+    }
+    fp = fopen(path, "r");
+    if (NULL == fp) {
+        return false;
+    }
+    while (!found && NULL != fgets(line, sizeof(line), fp)) {
+        if (0 != strncmp(line, "GPU UUID:", strlen("GPU UUID:"))) {
+            continue;
+        }
+        val = line + strlen("GPU UUID:");
+        while (' ' == *val || '\t' == *val) {
+            ++val;
+        }
+        end = strlen(val);
+        while (0 < end && isspace((unsigned char) val[end - 1])) {
+            --end;
+        }
+        if (end <= strlen("GPU-") || end >= len || 0 != strncmp(val, "GPU-", strlen("GPU-"))) {
+            break;
+        }
+        for (n = strlen("GPU-"); n < end; n++) {
+            if (!isxdigit((unsigned char) val[n]) && '-' != val[n]) {
+                break;
+            }
+        }
+        if (n == end) {
+            memcpy(uuid, val, end);
+            uuid[end] = '\0';
+            found = true;
+        }
+        /* only one line can carry it */
+        break;
+    }
+    fclose(fp);
+    return found;
+}
+
+unsigned pmix_hwloc_add_driver_identities(hwloc_topology_t topo, const char *root)
+{
+    hwloc_obj_t pci, child;
+    char busid[32], uuid[128];
+    bool known;
+    unsigned k, added = 0;
+
+    if (NULL == topo) {
+        return 0;
+    }
+    if (NULL == root) {
+        root = "/proc";
+    }
+    for (pci = hwloc_get_next_pcidev(topo, NULL); NULL != pci;
+         pci = hwloc_get_next_pcidev(topo, pci)) {
+        /* an NVIDIA display-class function - VGA, 3D controller, or other */
+        if (0x10de != pci->attr->pcidev.vendor_id
+            || 0x03 != (pci->attr->pcidev.class_id >> 8)) {
+            continue;
+        }
+        /* a vendor backend that recorded an identity is the authority, and
+         * one recorded already is not recorded twice */
+        known = false;
+        for (k = 0; !known && NULL != vendor_id_keys[k].key; k++) {
+            known = (NULL != hwloc_obj_get_info_by_name(pci, vendor_id_keys[k].key));
+        }
+        for (child = pci->io_first_child; !known && NULL != child;
+             child = child->next_sibling) {
+            if (HWLOC_OBJ_OS_DEVICE != child->type) {
+                continue;
+            }
+            for (k = 0; !known && NULL != vendor_id_keys[k].key; k++) {
+                known = (NULL != hwloc_obj_get_info_by_name(child, vendor_id_keys[k].key));
+            }
+        }
+        if (known) {
+            continue;
+        }
+        snprintf(busid, sizeof(busid), "%04x:%02x:%02x.%01x",
+                 pci->attr->pcidev.domain, pci->attr->pcidev.bus,
+                 pci->attr->pcidev.dev, pci->attr->pcidev.func);
+        if (!nvidia_driver_uuid(root, busid, uuid, sizeof(uuid))) {
+            pmix_output_verbose(5, pmix_hwloc_output,
+                                "%s:%s no driver identity for %s", __FILE__, __func__, busid);
+            continue;
+        }
+        if (0 != hwloc_obj_add_info(pci, "NVIDIAUUID", uuid)) {
+            continue;
+        }
+        pmix_output_verbose(2, pmix_hwloc_output,
+                            "%s:%s %s is %s (from the driver)", __FILE__, __func__,
+                            busid, uuid);
+        ++added;
+    }
+    return added;
 }
 
 /* Is this OS device a Level Zero *root* device - one of the devices
@@ -2254,7 +2382,7 @@ static char *device_selector(hwloc_topology_t topology, hwloc_obj_t osdev, hwloc
      * be absent: the name is how hwloc reported the device in the first
      * place.  Which name that is for a function presenting two of them is
      * settled by osdev_preferred() above, before this is ever reached. */
-    if (HWLOC_OBJ_OS_DEVICE == osdev->type
+    if (NULL != osdev && HWLOC_OBJ_OS_DEVICE == osdev->type
         && (HWLOC_OBJ_OSDEV_OPENFABRICS == osdev->attr->osdev.type
             || HWLOC_OBJ_OSDEV_NETWORK == osdev->attr->osdev.type)) {
         return (NULL == osdev->name) ? NULL : strdup(osdev->name);
@@ -2578,6 +2706,13 @@ static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
         if (0 == strcasecmp(devid, busid)) {
             return true;
         }
+        /* an identity read from the driver sits on the function */
+        for (k = 0; NULL != vendor_id_keys[k].key; k++) {
+            val = hwloc_obj_get_info_by_name(pci, vendor_id_keys[k].key);
+            if (NULL != val && 0 == strcasecmp(devid, val)) {
+                return true;
+            }
+        }
     }
     if (PMIX_SUCCESS != build_device_uuid(osdev, pci, hostname, &uuid)) {
         return false;
@@ -2855,10 +2990,14 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
             array[n].selector = device_selector(topo->topology, c->osdev, c->pci,
                                                 array[n].vendor, array[n].vendor_id);
         } else if (NULL != array[n].busid) {
-            /* a GPU reported as a function alone: named by its bus id, and
-             * with no OS device there is no vendor identity to read and
-             * nothing to put in a runtime's selection variable */
+            /* a GPU reported as a function alone: named by its bus id.  No
+             * vendor backend recorded anything on it - there is no OS device
+             * for one to have written to - but an identity read from the
+             * driver sits on the function itself, and is as good a name */
             array[n].dev.osname = strdup(array[n].busid);
+            vendor_id_of(NULL, c->pci, &array[n].vendor_id, &array[n].vendor);
+            array[n].selector = device_selector(topo->topology, NULL, c->pci,
+                                                array[n].vendor, array[n].vendor_id);
         }
         if (NULL == array[n].dev.osname || (NULL != c->pci && NULL == array[n].busid)) {
             rc = PMIX_ERR_NOMEM;
