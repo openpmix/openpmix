@@ -266,7 +266,9 @@ function pointer. Specifics that matter:
   **selectors** (`pmix_hwloc_device_t.selector`) with commas. Whose a
   device is comes from its vendor identity when the topology recorded
   one and from its PCI vendor id when it did not, because a GPU with no
-  identity - every GPU on a node whose hwloc lacks the vendor backend -
+  identity - every GPU on a node whose hwloc lacks the vendor backend,
+  apart from the NVIDIA GPUs whose identity the driver supplied (see
+  `pmix_hwloc_add_driver_identities()` in `src/hwloc/AGENTS.md`) -
   is still somebody's, and a process given one of ours beside a GPU that
   can be named must be told nothing rather than a list that hides it
   (`test/unit/pgpu_visible_devices.c`). It checks
