@@ -82,6 +82,24 @@ PMIX_EXPORT pmix_status_t pmix_hash_fetch_lowest_rank(pmix_hash_table_t *table,
                                                       pmix_list_t *kvals,
                                                       pmix_keyindex_t *kidx);
 
+/* As pmix_hash_fetch_lowest_rank(), but only ranks for which "keep"
+ * answers true are candidates - a NULL "keep" admits every rank. It lets
+ * a caller search one table for the ranks a question is allowed to see,
+ * which is how a PMIx_Get for PMIX_RANK_UNDEF applies the visibility
+ * rule rank by rank (see the "visibility" parameter of the gds fetch).
+ * "keep" is asked only about ranks that hold the key. If "answered" is
+ * not NULL, the rank that answered is written there on success. */
+typedef bool (*pmix_hash_rank_filter_fn_t)(pmix_rank_t rank, void *ctx);
+PMIX_EXPORT pmix_status_t pmix_hash_fetch_lowest_rank_if(pmix_hash_table_t *table,
+                                                         pmix_rank_t maxrank,
+                                                         const char *key,
+                                                         pmix_info_t *qualifiers, size_t nquals,
+                                                         pmix_list_t *kvals,
+                                                         pmix_keyindex_t *kidx,
+                                                         pmix_hash_rank_filter_fn_t keep,
+                                                         void *ctx,
+                                                         pmix_rank_t *answered);
+
 /* remove the specified key-value from the given hash_table.
  * A NULL key will result in removal of all data for the
  * given rank. A rank of PMIX_RANK_WILDCARD indicates that

@@ -684,6 +684,81 @@ mapping - only the name goes (`pmix_shmem_segment_detach` in
 generation fails to, and falls back like any client the file's mode does
 not admit (below).
 
+### Same-node peers are answered from the local chain
+
+The modex carries each process's `PMIX_REMOTE` and `PMIX_GLOBAL` data and
+nothing else, and a peer on the reader's node must never be shown its
+`PMIX_REMOTE` data (see "What a `PMIx_Get` may see" in
+[`../AGENTS.md`](../AGENTS.md)). So the modex cannot answer for a
+same-node peer at all. Before this was fixed it did, and a key put at
+both scopes came back as its `PMIX_REMOTE` copy (openmpi#14873).
+
+Same-node data has a chain of its own, `job->local_chain`
+(`PMIX_GDS_SHMEM3_LOCAL_ID`, backing files `localdata.<gen>`). It is the
+modex machinery again - root `pmix_gds_shmem3_shared_modex_data_t`, slots
+from the same arena pool, newest-first walk - holding what the server's
+own clients put at `PMIX_LOCAL` and `PMIX_GLOBAL` scope. The design is in
+"Local data" in `docs/how-things-work/shmem3.rst`; what is easy to break:
+
+- **The build is driven from the fence, not the modex.**
+  `PMIX_GDS_BUILD_LOCAL` runs in `_mdxcbfunc` (`pmix_server_op_replies.c`)
+  on every fence path - collected, not collected, and the all-local fence
+  the server completes itself - before the reply loop, because the reply
+  (`server_mark_modex_complete()`) is what tells clients the generation
+  exists. `server_build_local()` writes only the `"rank:key"` entries
+  `server_local_committed()` recorded on `job->local_pending` since the
+  last build, re-read from the server's own `hash` store at `PMIX_LOCAL`
+  scope, so a fence with nothing new adds no generation.
+- **Replacing a key between fences withdraws it.** The newest generation
+  holding a key keeps answering until the next fence, so
+  `server_local_committed()` tombstones a key a published generation
+  holds and sends every other local client the `PMIX_DEL_LOCAL` notice a
+  delete sends (which also drops the key from their caches). The
+  committing client is skipped: its own data is read from its own store
+  (see below), and the notice would delete the value it just put there.
+- **A tombstone is dated per chain.** `local_generation` is the count of
+  local generations held when it was made (`pmix_gds_shmem3_local_count()`)
+  and shadows only those below it, so the next generation, which carries
+  the new value, is not shadowed - and a tombstone made before any local
+  generation shadows none. The modex keeps its own `generation`.
+- **A client numbers local generations as the server does.** The seg blob
+  carries the server's number (`SHMEM3_SEG_GEN_KEY`, now sent for the
+  local chain too); the client adopts it, so a declined or missed
+  generation cannot put its count behind the server's. The chain ships
+  whole, oldest first, in every fence reply and in the cached job-info
+  reply (ahead of the tombstones, which date against it), and a client
+  declines one not newer than its head - harmless here, since a missed
+  key misses and goes to the server.
+- **Our own data is never read from a shared chain.** A process's own
+  rank is answered from the job chain only (host data); its puts come
+  from its own store, which is current.
+- **A miss is not proof.** Between fences the local chain can be behind
+  the server, so a named-rank miss is `PMIX_ERR_NOT_FOUND` even when the
+  hidden copy exists - unlike `gds/hash`, which can say
+  `PMIX_ERR_EXISTS_OUTSIDE_SCOPE` because its store is current. A scope
+  that contradicts the target's location is answered
+  `PMIX_ERR_EXISTS_OUTSIDE_SCOPE` at once, and a `PMIX_RANK_UNDEF` search
+  whose only copies were excluded by the reader's own scope says so too.
+
+Locality is read per rank from the job chain: the rank's `PMIX_HOSTNAME`
+against ours (`pmix_gds_base_host_locality()`), the reader's
+`PMIX_LOCAL`/`PMIX_REMOTE` scope standing in when the job data has none.
+Nothing of `nptr` is touched - this runs on the application's thread.
+
+### Values that cannot be shared
+
+`pmix_gds_shmem3_segment_can_hold()` (`gds_shmem3_utils.c`) refuses
+`PMIX_PROC_CPUSET`, `PMIX_TOPO` and `PMIX_DATA_BUFFER`, at any depth of an
+info or value array: their copy routines allocate the payload from the
+copier's heap, so a reader would dereference an address in the server.
+Every segment writer - job, session, node, app, proc data, job updates,
+modex, local - goes through `pmix_gds_shmem3_hold_back()`, and a segment
+that left something out is marked `incomplete`; a `NULL`-key read of a
+job any of whose segments is incomplete declines (`job_incomplete()`), so
+the server answers it. A held-back modex value is stored in the server's
+own `hash` (the segment is otherwise its only copy there); every other
+held-back value is already in it.
+
 ### A modex that outgrows its segment
 
 A modex segment is sized before any of the contribution is unpacked, and

@@ -1078,6 +1078,16 @@ typedef struct {
      * caller that already knows (the client parse) sets it and the
      * macro leaves it alone. */
     pmix_realm_t realm;
+    /* This fetch answers a PMIx_Get, so the datastore applies the
+     * visibility rule of PMIx_Put(3): a target on this node shows its
+     * PMIX_LOCAL and PMIX_GLOBAL data and never its PMIX_REMOTE data; a
+     * target on another node shows its PMIX_REMOTE and PMIX_GLOBAL data
+     * and never its PMIX_LOCAL data; and a PMIX_DATA_SCOPE that names the
+     * other location finds nothing. False by default, because the
+     * library's own fetches - building a fence's modex, answering a
+     * direct modex for another node, a connect or group contribution -
+     * read a scope's table exactly as stored. Only the get paths set it. */
+    bool get_visibility;
     pmix_get_logic_t *lg;
     bool timer_running;
     pmix_fabric_t *fabric;

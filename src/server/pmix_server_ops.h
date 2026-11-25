@@ -126,6 +126,10 @@ typedef struct {
     bool event_active;
     pmix_dmdx_local_t *lcd;
     char *key;
+    /* the PMIX_DATA_SCOPE this requester gave, or PMIX_SCOPE_UNDEF. A
+     * parked request is answered with it - not with the scope of the data
+     * whose arrival woke it, which says nothing about what was asked */
+    pmix_scope_t scope;
     pmix_modex_cbfunc_t cbfunc; // cbfunc to be executed when data is available
     void *cbdata;
 } pmix_dmdx_request_t;
@@ -286,8 +290,11 @@ typedef struct {
     } while (0)
 
 PMIX_EXPORT void pmix_pending_nspace_requests(pmix_namespace_t *nptr);
+/* Answer the requests parked for this rank (or, for a NULL lcd, for any
+ * rank) now that its data may be here. Each is answered with the scope its
+ * own requester gave - see pmix_dmdx_request_t.scope. */
 PMIX_EXPORT pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
-                                               pmix_status_t status, pmix_scope_t scope,
+                                               pmix_status_t status,
                                                pmix_dmdx_local_t *lcd);
 
 /* Fail every requester parked on this direct-modex tracker with the given
@@ -321,6 +328,13 @@ PMIX_EXPORT void pmix_server_fail_remote_req(pmix_dmdx_remote_t *dcd,
  * calling the pmix_dmodex_response_fn_t the host supplied, so the host is
  * left holding a request it will never hear about again. */
 PMIX_EXPORT void pmix_server_drain_remote_pnd(pmix_status_t status);
+
+/* Answer a direct-modex request for one rank of a job we host, honoring a
+ * PMIX_REQUIRED_KEY in its directives. On return, *wait says the key is not
+ * here yet and the request must stay parked. See pmix_server_dmodex.c. */
+PMIX_EXPORT pmix_status_t pmix_server_dmodex_answer(const pmix_proc_t *proc,
+                                                    const pmix_info_t *info, size_t ninfo,
+                                                    char **data, size_t *sz, bool *wait);
 
 PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);

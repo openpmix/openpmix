@@ -68,7 +68,11 @@
  *    resolved against the process-global index instead. No size changed,
  *    but a peer built before this looks for reserved keys in a table that
  *    no longer holds them. */
-#define PMIX_GDS_SHMEM3_LAYOUT_VERSION 2u
+/* 3: every segment says whether a value was left out of it ("incomplete"),
+ *    and a fourth kind of segment - the local chain - travels in the same
+ *    blobs. A peer built before this would read the flag as part of
+ *    whatever followed it. */
+#define PMIX_GDS_SHMEM3_LAYOUT_VERSION 3u
 
 #define PMIX_GDS_SHMEM3_LAYOUT_ID                                            \
     ((uint32_t)(                                                             \
@@ -175,6 +179,10 @@ typedef enum {
     PMIX_GDS_SHMEM3_JOB_ID = 0,
     PMIX_GDS_SHMEM3_SESSION_ID,
     PMIX_GDS_SHMEM3_MODEX_ID,
+    /* The local chain: what the server's own clients put at PMIX_LOCAL
+     * and PMIX_GLOBAL scope. Same root structure as a modex generation -
+     * see "Local data" in docs/how-things-work/shmem3.rst. */
+    PMIX_GDS_SHMEM3_LOCAL_ID,
     PMIX_GDS_SHMEM3_INVALID_ID
 } pmix_gds_shmem3_job_shmem3_id_t;
 
@@ -249,6 +257,10 @@ typedef struct {
     pmix_list_t *sessioninfo;
     /** Node information. */
     pmix_list_t *nodeinfo;
+    /** A value was left out of this segment because its type keeps its
+     *  payload outside the value (see pmix_gds_shmem3_segment_can_hold),
+     *  so a request for "everything" here must go to the server. */
+    bool incomplete;
 } pmix_gds_shmem3_shared_session_data_t;
 
 /* One segment in a chain of them, newest first.
@@ -402,6 +414,8 @@ typedef struct {
      * Clients map the segment read-only, so they must reach this only
      * through pmix_hash_find_key() and friends, which never register. */
     pmix_keyindex_t *keyindex;
+    /** A value was left out of this segment - see the session's. */
+    bool incomplete;
 } pmix_gds_shmem3_shared_job_data_t;
 
 typedef struct {
@@ -436,6 +450,9 @@ typedef struct {
      * Clients map the segment read-only, so they must reach this only
      * through pmix_hash_find_key() and friends, which never register. */
     pmix_keyindex_t *keyindex;
+    /** A value was left out of this segment - see the session's. A
+     *  NULL-key request reaching this segment then declines. */
+    bool incomplete;
 } pmix_gds_shmem3_shared_modex_data_t;
 
 /* A key this job has been told to stop answering for.
@@ -449,10 +466,11 @@ typedef struct {
  * reply.
  *
  * "generation" is the modex generation current when the removal was
- * recorded. Job-segment data is written once and never re-published, so
- * a tombstone against it always applies; modex data can legitimately
- * come back, so a tombstone only shadows generations up to the one it
- * was recorded at. */
+ * recorded, and "local_generation" the local chain's. Job-segment data is
+ * written once and never re-published, so a tombstone against it always
+ * applies; modex and local data can legitimately come back, so a
+ * tombstone only shadows the generations of each chain up to the one it
+ * was recorded at - each chain compared against its own number. */
 typedef struct pmix_gds_shmem3_tombstone_t {
     /** The tombstone recorded before this one; NULL at the end.
      *
@@ -466,6 +484,7 @@ typedef struct pmix_gds_shmem3_tombstone_t {
     pmix_rank_t rank;
     char *key;
     uint32_t generation;
+    uint32_t local_generation;
 } pmix_gds_shmem3_tombstone_t;
 
 /** Head of a job's tombstone chain. */
@@ -608,6 +627,23 @@ typedef struct {
      * a reader could catch a generation half-built or half-retired,
      * because a reader cannot see it until it is whole. */
     pmix_gds_shmem3_chain_t modex_chain;
+    /** The local chain - what the server's own clients put at PMIX_LOCAL
+     *  and PMIX_GLOBAL scope - and its build slot. Same discipline as the
+     *  modex fields above; see "Local data" in shmem3.rst. A same-node
+     *  target is read from this chain, never from the modex. */
+    pmix_gds_shmem3_status_t local_shmem3_status;
+    pmix_shmem_t *local_shmem3;
+    pmix_gds_shmem3_shared_modex_data_t *smlocal;
+    /** Dates tombstones and names backing files, as modex_generation
+     *  does for the modex - both ends advance it. */
+    pmix_atomic_uint32_t local_generation;
+    pmix_gds_shmem3_chain_t local_chain;
+    /** Server only: the ranks with PMIX_LOCAL or PMIX_GLOBAL data
+     *  committed since the last local generation was built, and the keys
+     *  each committed, as "rank:key" strings. The next fence's generation
+     *  carries exactly these, so a fence with nothing new adds none.
+     *  Progress-thread state; no reader touches it. */
+    char **local_pending;
     /** Base of this job's reserved address-space arena, or 0 if it has
      *  none. See "The address-space arena" in AGENTS.md.
      *

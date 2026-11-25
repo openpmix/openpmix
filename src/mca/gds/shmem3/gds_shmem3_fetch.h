@@ -23,6 +23,7 @@ pmix_gds_shmem3_fetch(
     pmix_info_t qualifiers[],
     size_t nqual,
     pmix_realm_t realm,
+    bool visibility,
     pmix_list_t *kvs
 );
 
