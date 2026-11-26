@@ -40,6 +40,7 @@ EXTRA_DIST = \
     platform/intel/bend/mac.conf \
     platform/intel/bend/linux \
     platform/intel/bend/linux.conf \
-    check_compat.py
+    check_compat.py \
+    test_check_compat.py
 
 dist_pmixdata_DATA = pmix-valgrind.supp
