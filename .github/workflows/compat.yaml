@@ -1,0 +1,52 @@
+#-----------------------------------------------------------------
+# File: compat.yaml
+#
+# Descr: Check that a pull request does not break the public
+#        interface: compare its public headers against those of the
+#        commit it would merge into, with contrib/check_compat.py.
+#        Removing anything public, or changing a constant, attribute
+#        string, function signature, or structure layout, fails the
+#        check (see the ABI Compatibility section of docs/versions.rst
+#        and ABI STABILITY in pmix_server_module_t(5)).
+#
+#        A pull request that changes the interface on purpose can be
+#        given the 'abi-change' label: the check then reports what
+#        changed without failing.
+#-----------------------------------------------------------------
+name: Interface compatibility
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - 'include/**'
+      - 'contrib/check_compat.py'
+      - 'contrib/test_check_compat.py'
+      - '.github/workflows/compat.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test the checker
+        run: python3 contrib/test_check_compat.py
+
+      - name: Fetch the base headers
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          mkdir -p "$RUNNER_TEMP/base"
+          git archive "$BASE_SHA" include | tar -x -C "$RUNNER_TEMP/base"
+
+      - name: Compare against the base
+        env:
+          REPORT_ONLY: ${{ contains(github.event.pull_request.labels.*.name, 'abi-change') && '--report-only' || '' }}
+        run: |
+          python3 contrib/check_compat.py --compile --all $REPORT_ONLY \
+              --src include --tgt "$RUNNER_TEMP/base/include"
