@@ -50,16 +50,16 @@ C Syntax
        /* v4x interfaces */
        pmix_server_grp_fn_t                group;
        pmix_server_fabric_fn_t             fabric;
-       /* v6x interfaces */
        pmix_server_client_connected2_fn_t  client_connected2;
+       /* v5x interfaces */
+       pmix_server_session_control_fn_t    session_control;
+       /* v6.0 interfaces */
+       pmix_server_resource_block_fn_t     resource_block;
+       /* v6.1 interfaces */
        pmix_server_tool_connection2_fn_t   tool_connected2;
        pmix_server_log2_fn_t               log2;
-       /* pending interfaces */
-       pmix_server_session_control_fn_t    session_control;
-       pmix_server_resource_block_fn_t     resource_block;
        /* v7x interfaces */
        pmix_server_abort2_fn_t             abort2;
-
    } pmix_server_module_t;
 
 
@@ -241,6 +241,8 @@ the requester is the host: the up-call carries the server's own process
 identifier and the library adds nothing to the caller's arrays.
 
 
+.. _man5-pmix_server_module_t-abi:
+
 ABI STABILITY
 -------------
 
@@ -259,11 +261,34 @@ the order of fields is a binary-compatibility contract and is **frozen**:
 
 * Existing fields are never removed and never reordered.
 * New callbacks are only ever **appended** at the end of the structure. The
-  ``/* v1x interfaces */`` ... ``/* pending interfaces */`` group comments record
-  the release series in which each block of members was added.
+  ``/* v1x interfaces */`` ... ``/* v7x interfaces */`` group comments record
+  the release in which each block of members was added.
 * When a callback's signature must change, the original field is **retained in
   place** (marked ``// DEPRECATED``) and a replacement is appended at the end
   with a numeric suffix on its name.
+
+Ordering and size are two separate hazards. Keeping the order frozen
+means each member a host knows about sits at the same offset in every
+release, so a host's function is never called through the wrong slot.
+Appending still makes the structure larger, though. The library copies
+the host's structure by value, using its own definition, and cannot
+tell how large the host's copy is. A host built against an earlier
+release, with a smaller structure, would have whatever memory follows
+it read as the newer members. That is why the same-major-version
+requirement above still applies. The frozen order is what lets a
+release add members without breaking hosts that are rebuilt against
+it, and what keeps a positional initializer meaning the same thing
+from one release to the next.
+
+.. note:: PMIx v6.1.0 broke this rule. It inserted ``tool_connected2``
+   and ``log2`` ahead of ``session_control`` and ``resource_block``,
+   moving those two members from the slots they hold in v5.0 and v6.0.
+   The layout shown above restores the original order and appends the
+   v6.1 members after ``resource_block``. A host built against the
+   v6.1.0 headers therefore has ``tool_connected2``, ``log2``,
+   ``session_control``, and ``resource_block`` at different offsets
+   from this release, and must be rebuilt. This is one of the reasons
+   the v6.x series has been withdrawn; see :ref:`label-v6-withdrawn`.
 
 The structure currently carries four deprecation pairs. In each case the
 library prefers the newer member and falls back to the deprecated one only if
@@ -789,6 +814,30 @@ The array carries:
   when that wait is unbounded. A process with none left is refused with
   ``PMIX_ERR_TIMEOUT``, and the host is not asked.
 
+.. _man5-pmix_server_module_t-session_control:
+
+session_control
+^^^^^^^^^^^^^^^
+
+``session_control`` (``pmix_server_session_control_fn_t``) |mdash| Services
+:ref:`PMIx_Session_control(3) <man3-PMIx_Session_control>`. The host executes the
+requested control operation against the identified session (``sessionID``) and
+returns results through a ``pmix_info_cbfunc_t``. The directives may include
+``PMIX_REQUESTOR`` (pmix_proc_t*) identifying the process on whose behalf the
+request was made when it was relayed by another process.
+
+.. _man5-pmix_server_module_t-resource_block:
+
+resource_block
+^^^^^^^^^^^^^^
+
+``resource_block`` (``pmix_server_resource_block_fn_t``) |mdash| Services
+:ref:`PMIx_Resource_block(3) <man3-PMIx_Resource_block>`. The host defines,
+deletes, extends, or removes resources from a named resource block per the
+``pmix_resource_block_directive_t`` and the supplied array of
+``pmix_resource_unit_t`` units. Completion is reported through a
+``pmix_op_cbfunc_t``.
+
 .. _man5-pmix_server_module_t-tool_connected2:
 
 tool_connected2
@@ -861,30 +910,6 @@ services :ref:`PMIx_Log(3) <man3-PMIx_Log>`; the library prefers this member and
 falls back to ``log`` only when it is NULL. Identical in parameters to ``log``
 but returns a ``pmix_status_t``. As with ``log``, the host must not call
 `PMIx_Log` from within this callback.
-
-.. _man5-pmix_server_module_t-session_control:
-
-session_control
-^^^^^^^^^^^^^^^
-
-``session_control`` (``pmix_server_session_control_fn_t``) |mdash| Services
-:ref:`PMIx_Session_control(3) <man3-PMIx_Session_control>`. The host executes the
-requested control operation against the identified session (``sessionID``) and
-returns results through a ``pmix_info_cbfunc_t``. The directives may include
-``PMIX_REQUESTOR`` (pmix_proc_t*) identifying the process on whose behalf the
-request was made when it was relayed by another process.
-
-.. _man5-pmix_server_module_t-resource_block:
-
-resource_block
-^^^^^^^^^^^^^^
-
-``resource_block`` (``pmix_server_resource_block_fn_t``) |mdash| Services
-:ref:`PMIx_Resource_block(3) <man3-PMIx_Resource_block>`. The host defines,
-deletes, extends, or removes resources from a named resource block per the
-``pmix_resource_block_directive_t`` and the supplied array of
-``pmix_resource_unit_t`` units. Completion is reported through a
-``pmix_op_cbfunc_t``.
 
 .. _man5-pmix_server_module_t-abort2:
 

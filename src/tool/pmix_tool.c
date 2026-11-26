@@ -1710,6 +1710,10 @@ pmix_status_t PMIx_tool_set_server_module(pmix_server_module_t *module)
                        __func__);
         return PMIX_ERR_INIT;
     }
+    /* A by-value copy of our own definition of the structure - we cannot
+     * tell which release's definition the host was built with. See the
+     * comment above pmix_server_module_t in pmix_server.h and ABI
+     * STABILITY in pmix_server_module_t(5). */
     pmix_host_server = *module;
     pmix_server_globals.module_set = true;
 
