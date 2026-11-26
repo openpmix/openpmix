@@ -585,6 +585,20 @@ typedef pmix_status_t (*pmix_server_resource_block_fn_t)(const pmix_proc_t *requ
                                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
+/* The order of the members below is a binary contract: a compiled host
+ * puts each function at the offset its headers gave it, and some hosts
+ * fill the structure with positional initializers. Members are only
+ * ever appended - never inserted, removed, or reordered - and each
+ * block is tagged with the release that first shipped it. The library
+ * copies the structure by value and cannot tell which release's
+ * definition the host was compiled with, so a host must still run
+ * against the major version it was built against. See the ABI STABILITY
+ * section of pmix_server_module_t(5).
+ *
+ * v6.1.0 shipped with tool_connected2 and log2 inserted ahead of
+ * session_control and resource_block, moving both away from the slots
+ * they hold in v5.0 and v6.0. The order below puts them back and
+ * appends the v6.1 members after them. */
 typedef struct pmix_server_module_4_0_0_t {
     /* v1x interfaces */
     pmix_server_client_connected_fn_t   client_connected; // DEPRECATED
@@ -617,16 +631,16 @@ typedef struct pmix_server_module_4_0_0_t {
     /* v4x interfaces */
     pmix_server_grp_fn_t                group;
     pmix_server_fabric_fn_t             fabric;
-    /* v6x interfaces */
     pmix_server_client_connected2_fn_t  client_connected2;
+    /* v5x interfaces */
+    pmix_server_session_control_fn_t    session_control;
+    /* v6.0 interfaces */
+    pmix_server_resource_block_fn_t     resource_block;
+    /* v6.1 interfaces */
     pmix_server_tool_connection2_fn_t   tool_connected2;
     pmix_server_log2_fn_t               log2;
-    /* pending interfaces */
-    pmix_server_session_control_fn_t    session_control;
-    pmix_server_resource_block_fn_t     resource_block;
     /* v7x interfaces */
     pmix_server_abort2_fn_t             abort2;
-
 } pmix_server_module_t;
 
 /****    HOST RM FUNCTIONS FOR INTERFACE TO PMIX SERVER    ****/

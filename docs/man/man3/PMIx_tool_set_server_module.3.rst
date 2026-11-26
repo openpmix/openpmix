@@ -71,7 +71,9 @@ acts as a server.
    version specifies. It cannot check either. New members are added to the
    structure only in a new major release. A host that runs against a
    library of a different major version is not supported, and its behavior
-   is undefined.
+   is undefined. The ABI STABILITY section of
+   :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t-abi>` explains
+   why, and how the structure's layout is kept stable across releases.
 
 The module may be set only once. A second call, after a module has already
 been installed, is rejected.
