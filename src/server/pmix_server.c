@@ -851,6 +851,13 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         pmix_atomic_fetch_add(&server_init_cntr, 1);
         /* setup the function pointers if they weren't previously defined */
         if (NULL != module && !pmix_server_globals.module_set) {
+            /* A by-value copy of our own definition of the structure.
+             * Nothing tells us which release's definition the host was
+             * built with, so a host built against a smaller structure
+             * has the memory after it read as the newer members. That
+             * is why a host must run against the major version it was
+             * built with. See the comment above pmix_server_module_t in
+             * pmix_server.h and ABI STABILITY in pmix_server_module_t(5). */
             pmix_host_server = *module;
             pmix_server_globals.module_set = true;
         }
@@ -881,7 +888,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SERVER);
-    /* setup the function pointers */
+    /* setup the function pointers - a by-value copy, see above */
     if (NULL != module && !pmix_server_globals.module_set) {
         pmix_host_server = *module;
         pmix_server_globals.module_set = true;

@@ -96,9 +96,7 @@ pmix_server_module_t pmix_host_server = {
     .notify_event = NULL,
     .query = NULL,
     .tool_connected = NULL,
-    .tool_connected2 = NULL,
     .log = NULL,
-    .log2 = NULL,
     .allocate = NULL,
     .job_control = NULL,
     .monitor = NULL,
@@ -110,6 +108,9 @@ pmix_server_module_t pmix_host_server = {
     .fabric = NULL,
     .client_connected2 = NULL,
     .session_control = NULL,
+    .resource_block = NULL,
+    .tool_connected2 = NULL,
+    .log2 = NULL,
     .abort2 = NULL
 };
 

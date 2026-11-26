@@ -4,6 +4,9 @@ PMIx v6.x series
 This file contains all the NEWS updates for the PMIx v6.x
 series, in reverse chronological order.
 
+.. warning:: The v6.x series has been withdrawn and should not be
+             used. See :ref:`label-v6-withdrawn`.
+
 6.0.0 -- TBD
 ------------
 .. important:: This is the first release in the v6 family. The intent

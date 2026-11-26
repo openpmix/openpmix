@@ -203,6 +203,83 @@ the v5.0 string, which v7.0 reads as the other attribute of the pair.
 Rebuild it against v7.0 to use the new string. A program that uses the
 other attribute of each pair is unaffected.
 
+**One declaration, corrected.** From v4.2 through v6.0,
+``pmix_deprecated.h`` declared ``PMIx_Fabric_construct`` as taking a
+``pmix_regattr_t *``, but no library of those releases provided the
+function, so a program that called it could not be linked. v6.1 and
+later provide it, declared as taking the ``pmix_fabric_t *`` it
+initializes. No program built against v5.0 can be affected. Source
+that followed the old declaration and passed a ``pmix_regattr_t *`` no
+longer compiles cleanly and should pass the ``pmix_fabric_t`` being
+set up instead, or use the ``PMIX_FABRIC_CONSTRUCT`` macro, which every
+release since v4.2 provides.
+
+.. _label-v6-withdrawn:
+
+The v6.x Series Is Withdrawn
+----------------------------
+
+**Do not use PMIx v6.0 or v6.1.** The series has been withdrawn. Its
+tags remain in the Git repository, because published tags are never
+removed, but they are not releases to build or deploy. Use v5.0, the
+stable series, or v7.0.
+
+The v6.1.0 release broke the binary layout of
+``pmix_server_module_t``, the structure through which a host
+environment supplies its functions to the PMIx server library (see
+:ref:`pmix_server_module_t(5) <man5-pmix_server_module_t-abi>`). That
+layout is meant to be frozen: members are only ever appended, so each
+one stays at the same offset in every release. v6.1.0 broke this in two
+ways:
+
+* It inserted ``tool_connected2`` and ``log2`` ahead of
+  ``session_control`` and ``resource_block``, moving those two members
+  out of the slots they hold in v5.0 and v6.0. A host built against
+  v6.0 and run with the v6.1 library has its ``session_control``
+  function called as ``tool_connected2`` and its ``resource_block``
+  function called as ``log2``, with arguments of the wrong types. The
+  library also reads the memory after the host's structure as the two
+  members the host never defined.
+* It added members in a minor release. Hosts are entitled to run against
+  any release of the major version they were built against, so a v6.0
+  host could not have known about them.
+
+v7.0 restores the v5.0 and v6.0 layout and appends the v6.1 members
+after ``resource_block``.
+
+v6.1.0 also broke programs that never supply a server module:
+
+* It removed the provisional resource-usage structures
+  (``pmix_proc_stats_t``, ``pmix_node_stats_t``, ``pmix_disk_stats_t``,
+  and ``pmix_net_stats_t``), their data type codes, and the functions
+  and macros that manage them, all of which v5.0 and v6.0 provided. A
+  program built against v6.0 that used them does not build against
+  v6.1, and does not run against its library. v7.0 provides them again,
+  in ``pmix_deprecated.h``, as described above.
+* It added a ``bool overwrite`` parameter to
+  ``PMIx_Info_list_add_value_unique``, which v6.0 introduced with three
+  parameters. v7.0 keeps the four-parameter form.
+
+Moving off v6.x:
+
+* **Host environments** - programs that call ``PMIx_server_init`` or
+  ``PMIx_tool_set_server_module`` - must be rebuilt against the release
+  they will run with, as they must for any change of major version. One
+  built against v6.1 that fills ``pmix_server_module_t`` with
+  positional, rather than designated, initializers must also be
+  corrected, because four of its members have moved.
+* **Programs that call PMIx_Info_list_add_value_unique** and were built
+  against v6.0 must be updated to pass ``overwrite`` and rebuilt.
+* **Programs that use values v7.0 changed** must be rebuilt: the three
+  attributes in the table above, which have the same strings in v6.x as
+  in v5.0, and three values v6.1 introduced and v7.0 changed - the
+  string of ``PMIX_PROGRESS_THREAD_NAME`` (``pmix.evname`` in v6.1,
+  ``pmix.pthrdnm`` in v7.0), and the error codes
+  ``PMIX_ERR_LOST_PRECISION`` (-400 in v6.1, -202 in v7.0) and
+  ``PMIX_ERR_CHANGE_SIGN`` (-401 in v6.1, -203 in v7.0).
+* **Other applications, libraries, and tools** built against v6.0 or
+  v6.1 run against v7.0 without being rebuilt.
+
 Cross-Version Compatibility
 ---------------------------
 

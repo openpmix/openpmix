@@ -7,6 +7,14 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - ``pmix_server_module_t`` has the v5.0 and v6.0 layout again. v6.1.0
+   moved ``session_control`` and ``resource_block`` behind the new
+   ``tool_connected2`` and ``log2``. Those two now follow
+   ``resource_block``, so each member is at the offset it had when
+   first released. A host built against v6.1 must be rebuilt, and one
+   that fills the structure with positional initializers must be
+   corrected. The v6.x series has been withdrawn; see
+   :ref:`label-v6-withdrawn`.
  - A process mapped against AMD GPUs is told which ones in the form ROCm
    reads: ``ROCR_VISIBLE_DEVICES`` names each as ``GPU-`` and its 16-digit
    unique id. It was given the identity as hwloc records it, which ROCm
