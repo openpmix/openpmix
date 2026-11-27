@@ -1632,6 +1632,64 @@ int main(int argc, char **argv)
                    PMIX_SUCCESS == rc && group_fired && nothing_parked());
         }
 
+        /* A leader of a bootstrap or "add members" construct names only
+         * some of the participants, but it names itself: a bootstrap
+         * leader gives its own ID, an "add members" leader the leaders. So
+         * it is held to the participant rule like any other caller - only
+         * a follower, which names nobody, is exempt. Against an unfixed
+         * library a leader naming another process went to the host as
+         * that process (openpmix#3850) */
+        {
+            pmix_proc_t self0[1], grpref[1], added[1];
+            size_t held = 0;
+
+            PMIX_LOAD_PROCID(&self0[0], GRPUT_MATCH, 0);
+            PMIX_LOAD_PROCID(&added[0], GRPUT_NSPACE, 5);
+
+            rc = drive_group_procs_as("grput.bsother", one, 1, true, m0);
+            report("a bootstrap leader naming another process is refused",
+                   PMIX_ERR_NOT_A_MEMBER == rc && !group_fired);
+            report("...and parks nothing", nothing_parked());
+            /* a bootstrap call goes up by itself, and the stub's refusal
+             * comes straight back to its caller */
+            rc = drive_group_procs_as("grput.bsself", self0, 1, true, m0);
+            report("a bootstrap leader naming itself reaches the host",
+                   PMIX_ERR_NOT_SUPPORTED == rc && group_fired && nothing_parked());
+
+            rc = drive_addmembers("grput.amother", one, 1, added, 1, m0);
+            report("an add-members leader not among the leaders it names is refused",
+                   PMIX_ERR_NOT_A_MEMBER == rc && !group_fired);
+            report("...and parks nothing", nothing_parked());
+            rc = drive_addmembers("grput.amself", both, 2, added, 1, m0);
+            report("an add-members leader among the leaders it names is accepted",
+                   PMIX_SUCCESS == rc && !group_fired);
+            rc = drive_addmembers("grput.amself", both, 2, added, 1, m1);
+            report("...and the other leader completes it",
+                   PMIX_SUCCESS == rc && group_fired && nothing_parked());
+
+            /* a leader may name itself through a group it belongs to - the
+             * procs go to the host as named, so the check expands a copy */
+            rc = record("grput.bsheld", both, 2, &held, NULL);
+            report("a group of both procs is recorded", PMIX_SUCCESS == rc && 2 == held);
+            PMIX_LOAD_PROCID(&grpref[0], "grput.bsheld", PMIX_RANK_WILDCARD);
+            rc = drive_group_procs_as("grput.bsgroup", grpref, 1, true, m0);
+            report("a bootstrap leader naming a group it is in reaches the host",
+                   PMIX_ERR_NOT_SUPPORTED == rc && group_fired && nothing_parked());
+            /* both members are local, so the destruct waits for both */
+            rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.bsheld", NULL, 0, m0);
+            report("one member's destruct of that group waits for the other",
+                   PMIX_SUCCESS == rc && !group_fired);
+            rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.bsheld", NULL, 0, m1);
+            report("...whose destruct ends it",
+                   PMIX_SUCCESS == rc && group_fired && nothing_parked() &&
+                   0 == held_members("grput.bsheld"));
+
+            /* a follower names nobody, and is still let through */
+            rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.bsfollow", NULL, 0, m0);
+            report("a follower naming nobody reaches the host",
+                   PMIX_ERR_NOT_SUPPORTED == rc && group_fired && nothing_parked());
+        }
+
         PMIX_RELEASE(m0);
         PMIX_RELEASE(m1);
     }

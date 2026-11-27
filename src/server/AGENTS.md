@@ -2146,6 +2146,18 @@ in `pmix_server_grpmbr.c`, and a v7.0 client connected to it keeps none
   group it belongs to by ID, which it did not expand, is expanded here
   when this server holds the group.) Namespaces are compared exactly:
   `PMIX_CHECK_NSPACE` reads an empty name as a wildcard.
+- **The rule covers a bootstrap or add-members leader as well**
+  (openpmix#3850): its `procs` lists only some of the participants, but
+  it does include the caller. A bootstrap leader names its own ID, and an
+  add-members leader names the leaders. Only a follower, which names
+  nobody, is exempt. Those `procs` go to the host unexpanded, so the check
+  runs on the array as given and, only if the caller is not named there,
+  on a `pmix_server_grp_expand` copy. Without this, a bootstrap leader
+  could pass another process's ID and reach the host as that process.
+  The library has no way to judge the rest of such a construct: whether
+  the followers who call are the members the leaders announced, or
+  whether all of them called. That is the host's decision, made from the
+  `PMIX_LOCAL_PARTICIPANTS` on each call. Covered by `server_group.c`.
 - A destruct naming no procs - how a v7.0 client sends it - is given the
   members and the failure policy from the record, and is
   `PMIX_ERR_NOT_FOUND` for a group we do not hold. A `PMIX_GROUP_LEFT`

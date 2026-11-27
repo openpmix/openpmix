@@ -192,13 +192,28 @@ leaders **and** all added members have called ``PMIx_Group_construct``, so that 
 group or endpoint information provided by the added members is included in the
 returned ``results`` array.
 
-When a call names its participants explicitly (i.e., it uses neither
-``PMIX_GROUP_ADD_MEMBERS`` nor ``PMIX_GROUP_BOOTSTRAP``), the client library first
-expands any group identifier appearing in the ``procs`` array into that group's
-member processes and then verifies that the caller is itself among the resolved
-participants, returning ``PMIX_ERR_NOT_A_MEMBER`` immediately if it is not. This
-check is intentionally skipped for the add-members and bootstrap methods, since
-those deliberately omit participants from the ``procs`` array.
+**A caller that names processes in** ``procs`` **must be among them.** This
+holds for every leader, whatever the method. In the collective method the
+``procs`` array lists every participant, so the caller is one of them. A
+bootstrap leader names its own process ID. A leader supplying
+``PMIX_GROUP_ADD_MEMBERS`` names the leaders, and is one of them. Any group
+identifier appearing in ``procs`` is resolved to that group's members before
+the check is made. A caller that is not among the processes it names is refused
+with ``PMIX_ERR_NOT_A_MEMBER`` before the request reaches the host. The only
+exception is an added member: it passes ``NULL`` in ``procs``, names nobody, and
+is not checked.
+
+The bootstrap and add-members methods are checked only this far. Their
+``procs`` arrays list some of the participants, not all of them, so the library
+cannot tell whether the added members that call are the ones the leaders named,
+or whether all of them called. That check belongs to the host. Each call it is
+handed carries ``PMIX_LOCAL_PARTICIPANTS``, which names the process that
+actually made the call (see :ref:`collective-participants-label`).
+
+.. note:: Versions of PMIx before v7.0 did not check bootstrap or add-members
+   leaders. A bootstrap leader that passed some other process's ID in ``procs``
+   was handed to the host under that ID. It is now refused. Code that passes
+   its own ID, as this page has always required, is unaffected.
 
 These methods and the responsibilities of the client library, server, and host are
 described in full in
@@ -317,9 +332,10 @@ was successfully accepted for processing; the final status is delivered to
 * ``PMIX_SUCCESS`` |mdash| the group was successfully constructed.
 * ``PMIX_GROUP_CONSTRUCT_ABORT`` |mdash| a participant aborted the construct
   procedure in response to a member or leader failure.
-* ``PMIX_ERR_NOT_A_MEMBER`` |mdash| the caller named its participants explicitly
-  but is not itself among them. Returned only for the collective method, since the
-  add-members and bootstrap methods skip this check.
+* ``PMIX_ERR_NOT_A_MEMBER`` |mdash| the caller named processes in ``procs`` but
+  is not itself among them. This applies to a leader of any method, including a
+  bootstrap leader that did not pass its own ID. It is never returned to an
+  added member, which passes ``NULL``.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| a required argument was invalid (e.g., a ``NULL``
   or over-length group identifier).
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the host environment does not support group

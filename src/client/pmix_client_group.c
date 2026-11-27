@@ -552,6 +552,32 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
             PMIX_PROC_FREE(rgs, nrg);
             return PMIX_ERR_NOT_A_MEMBER;
         }
+    } else if (partial && NULL != procs && 0 < nprocs &&
+               !pmix_client_server_has_groups()) {
+        /* A leader of a bootstrap or "add members" construct still names
+         * itself - a bootstrap leader its own ID, an "add members" leader
+         * the leaders - so it must be among the procs it names. Those
+         * procs are sent as given, so a group among them is converted for
+         * the check alone, and only when the caller is not named outright.
+         * A server of v7.0 on makes this check itself */
+        if (!pmix_client_proc_is_included(procs, nprocs)) {
+            pmix_proc_t *xprocs = NULL;
+            size_t nxprocs = 0;
+            bool named = false;
+
+            /* a group rank past the membership names nobody, which is
+             * answered as not being named - as the server does */
+            rc = pmix_client_convert_group_procs(procs, nprocs, &xprocs, &nxprocs);
+            if (PMIX_SUCCESS == rc) {
+                named = pmix_client_proc_is_included(xprocs, nxprocs);
+                PMIX_PROC_FREE(xprocs, nxprocs);
+            } else if (PMIX_ERR_NOT_FOUND != rc) {
+                return rc;
+            }
+            if (!named) {
+                return PMIX_ERR_NOT_A_MEMBER;
+            }
+        }
     }
 
     // send any data to our server
