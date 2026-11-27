@@ -164,7 +164,8 @@ Temporary directories
   root or the server's user, or one others can write without the
   sticky bit. Some container volumes are like that - a Kubernetes
   ``emptyDir``, for example. ``ptl_base_tmpdir_check`` set to
-  ``warn`` or ``silent`` lets the server run there.
+  ``warn`` or ``silent`` lets the server run there; see
+  :ref:`label-sysadmin-containers`.
 * **Rendezvous files moved.** Each user's servers write theirs in
   ``<tmpdir>/pmix-user.<uid>/``. A system server, scheduler, or system
   controller running as root writes its files in ``/run/pmix``, unless

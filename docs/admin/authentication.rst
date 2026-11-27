@@ -226,4 +226,12 @@ built under it, and is limited to about 100 characters. A server whose
 path is too long fails to start. The default ``$TMPDIR`` on macOS is too
 long - start the host environment with a shorter one.
 
+A server checks the path to its temporary directory before it uses it,
+and will not start if another user could change a directory on that
+path: one not owned by root or the server's user, or one others may
+write without the sticky bit. A Kubernetes ``emptyDir`` mounted at
+``/tmp`` is such a directory (root's, mode 0777, not sticky).
+:ref:`label-sysadmin-containers` describes the message and the fixes,
+among them the ``ptl_base_tmpdir_check`` MCA parameter.
+
 See :doc:`/how-things-work/session_dirs`.
