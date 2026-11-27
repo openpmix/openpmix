@@ -102,9 +102,16 @@ non-blocking form:
    *group* identifier is replaced by its member processes, and the caller is
    checked for inclusion via ``pmix_client_proc_is_included()``. A caller
    that is not among the expanded participants gets ``PMIX_ERR_NOT_A_MEMBER``
-   immediately. Both steps are skipped when ``PMIX_GROUP_ADD_MEMBERS`` or
-   ``PMIX_GROUP_BOOTSTRAP`` is present, since those intentionally omit
-   participants.
+   immediately. When ``PMIX_GROUP_ADD_MEMBERS`` or ``PMIX_GROUP_BOOTSTRAP``
+   is present, the ``procs`` array is sent as given, since those methods
+   intentionally omit participants. A caller that names processes must
+   still be among them, though: a bootstrap leader names itself, and an
+   add-members leader names the leaders. The check is made against a
+   converted copy only when the caller is not named outright. Only an
+   added member, which passes ``NULL``, goes unchecked. As with the
+   collective method, all of this is the client's job only when its server
+   predates v7.0. A newer server makes the same check in
+   ``pmix_server_group()``.
 
 #. **Packs the message** (``construct_msg()``): the command, group ID,
    participant array, and info array, folding in the caller's own endpoint

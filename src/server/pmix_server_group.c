@@ -3142,11 +3142,36 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     /* the requester must be one of the participants - of a destruct of a
      * group held here, one of its recorded members, whatever directives
      * came with it. The client library checks this too, except when it
-     * relies on us for its groups */
-    if ((NULL != grp || (!follower && !bootstrap && !addmembers)) &&
-        !pmix_server_grp_is_participant(peer, procs, nprocs)) {
-        rc = PMIX_ERR_NOT_A_MEMBER;
-        goto error;
+     * relies on us for its groups.
+     *
+     * That holds for a leader of a bootstrap or "add members" construct as
+     * well. Those name only some of the participants, but the ones they
+     * name include the caller: a bootstrap leader names itself, and an
+     * "add members" leader names the leaders. Only a follower, which names
+     * nobody, is exempt. Without this a leader could name another process
+     * as itself, and the host - handed the procs as named - had nothing
+     * but PMIX_LOCAL_PARTICIPANTS to tell it otherwise. Those procs go to
+     * the host unexpanded, so a group named among them is expanded here
+     * for the check alone, and only when the caller is not named outright */
+    if (NULL != grp || !follower) {
+        bool named = pmix_server_grp_is_participant(peer, procs, nprocs);
+
+        if (!named && NULL == grp && (bootstrap || addmembers)) {
+            pmix_proc_t *xprocs = NULL;
+            size_t nxprocs = 0;
+
+            rc = pmix_server_grp_expand(procs, nprocs, &xprocs, &nxprocs);
+            if (PMIX_SUCCESS == rc) {
+                named = pmix_server_grp_is_participant(peer, xprocs, nxprocs);
+                PMIX_PROC_FREE(xprocs, nxprocs);
+            } else if (PMIX_ERR_NOT_FOUND != rc) {
+                goto error;
+            }
+        }
+        if (!named) {
+            rc = PMIX_ERR_NOT_A_MEMBER;
+            goto error;
+        }
     }
 
     /* find/create the local tracker for this operation */

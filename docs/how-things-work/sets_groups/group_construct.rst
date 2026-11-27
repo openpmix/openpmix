@@ -71,11 +71,22 @@ provided by the added members can be included in the returned
     holds the membership of its clients' groups (see `Where group
     membership is held`_), does both; a client whose server predates v7.0
     does them itself, from the groups it has recorded. The same applies to
-    ``PMIx_Fence``, ``PMIx_Connect`` and ``PMIx_Disconnect``. This check is
-    intentionally skipped for the add-members and bootstrap methods, since
-    those deliberately omit participants from the ``procs`` array (a
-    non-bootstrap "add member" may even pass ``NULL``), so membership cannot
-    be validated.
+    ``PMIx_Fence``, ``PMIx_Connect`` and ``PMIx_Disconnect``.
+
+    A leader of the add-members or bootstrap method is checked too, but
+    only against the processes it names. Those methods list only some of
+    the participants, so the library cannot check the membership as a
+    whole. What it can check is that a caller naming processes is one of
+    them: a bootstrap leader names its own ID, and an add-members leader
+    names the leaders. Since those ``procs`` go to the host as named, a
+    group identifier among them is expanded for the check only. The one
+    caller left unchecked is an added member, which passes ``NULL`` and
+    names nobody. Whether the added members that call match the ones the
+    leaders announced is for the host to decide, from the
+    ``PMIX_LOCAL_PARTICIPANTS`` each call carries (see
+    :ref:`collective-participants-label`). Before v7.0 these leaders were
+    not checked at all, and a bootstrap leader could reach the host under
+    another process's ID (openpmix#3850).
 
 .. note::
 
