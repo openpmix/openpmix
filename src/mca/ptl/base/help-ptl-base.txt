@@ -507,7 +507,7 @@ This PMIx server's %s tmpdir
 
   %s
 
-lies below a directory another user could change:
+is, or lies below, a directory another user could change:
 
   Directory:  %s
   Owner:      uid %lu
@@ -533,7 +533,7 @@ This PMIx server's %s tmpdir
 
   %s
 
-lies below a directory another user could change:
+is, or lies below, a directory another user could change:
 
   Directory:  %s
   Owner:      uid %lu
