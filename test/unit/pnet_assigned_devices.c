@@ -77,9 +77,9 @@ static void ok(bool cond, const char *what)
 /* Register a namespace whose ranks were mapped against devices.  Rank
  * NPROCS is registered but not mapped, which is what every ordinary job
  * looks like.  Rank NPROCS+1 carries a PMIX_DEVICE_ID that is an array of
- * *names* rather than of pmix_device_t - the shape a host reading the
- * attribute's documented "(char*)" type would naturally produce for a
- * process with more than one device. */
+ * *names* rather than of pmix_device_t - the shape a host that carried
+ * the attribute's directive form, a "(char*)" naming one device, over to
+ * a process with more than one would produce. */
 static pmix_status_t register_nspace(void)
 {
     pmix_info_t *info, *pdata;
@@ -278,9 +278,9 @@ int main(int argc, char **argv)
        "an unmapped rank yields nothing, and is not an error");
 
     /* An assignment we cannot read is declined, not guessed at.  This rank's
-     * PMIX_DEVICE_ID is an array of *names* - the shape a host reading the
-     * attribute's documented "(char*)" type would produce for a process with
-     * several devices - and reading it as an array of pmix_device_t both
+     * PMIX_DEVICE_ID is an array of *names* - the shape a host that carried
+     * the attribute's directive form, a "(char*)", over to a process with
+     * several devices would produce - and reading it as pmix_device_t both
      * runs off the end of the allocation and misreads what is inside it.
      *
      * eth_match is what makes the check bite rather than merely assert.  A

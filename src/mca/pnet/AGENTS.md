@@ -233,10 +233,14 @@ nspace would be forked with another job's cached envars, and a
 `strcmp`, which has no such wildcard; rejecting an invalid nspace is
 what keeps the two styles agreeing.
 
-**`PMIX_DEVICE_ID` is documented as a string**, and the library reads it
-that way elsewhere (`pmix_hwloc.c` takes `info->value.data.string`). A
-host with several devices to report can therefore quite reasonably hand
-over a `PMIX_DATA_ARRAY` of `PMIX_STRING` rather than of `PMIX_DEVICE`.
+**`PMIX_DEVICE_ID` has two shapes.** As a directive naming one device it
+is a `char*`, and the library reads it that way (`pmix_hwloc.c` takes
+`info->value.data.string`). In a process's own proc info — the
+assignment this function reads — `pmix_common.h` says it is a
+`PMIX_DATA_ARRAY` of `PMIX_DEVICE`, even for a single device, and that is
+what PRRTE stores. The element type is still the host's word rather than
+ours: a host that carried the string form over to the plural case would
+hand over a `PMIX_DATA_ARRAY` of `PMIX_STRING`.
 `get_assigned_devices` checks `darray->type` for exactly that reason:
 reading a `char *[]` as `pmix_device_t[]` both runs off the end of the
 allocation and — because `osname` sits where the array holds its *second*
