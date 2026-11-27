@@ -78,6 +78,15 @@ array might include a ``PMIX_NODE_INFO_ARRAY`` containing the ``PMIX_NODEID`` or
 be removed using only its ``PMIX_DEVICE_ID``, which is unique across the entire
 system.
 
+Here ``PMIX_DEVICE_ID`` is a ``char*``, and it is whatever string the host
+supplied for the device when it registered it |mdash| e.g., the ``uuid`` of a
+:ref:`pmix_device_t(5) <man5-pmix_device_t>` such as
+``"fab://0e1a:2b3c:0000:0020::0e1a:2b3c:0000:0020"``, if that is what the host
+registered. It is compared with the registered value exactly, including case:
+unlike :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`, this API
+consults no topology, so an alternative spelling of the device (its OS name, PCI
+bus id or vendor identity) does not match it.
+
 ``PMIx_server_deregister_resources`` supports both calling conventions. When
 ``cbfunc`` is non-``NULL`` the function is **non-blocking**: the request is
 thread-shifted onto the progress thread, the function returns ``PMIX_SUCCESS``,

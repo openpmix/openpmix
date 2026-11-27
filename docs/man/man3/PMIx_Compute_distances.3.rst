@@ -177,17 +177,112 @@ in the ``info`` array to select the devices whose distances are to be computed:
   Values include ``PMIX_DEVTYPE_BLOCK``, ``PMIX_DEVTYPE_GPU``,
   ``PMIX_DEVTYPE_NETWORK``, ``PMIX_DEVTYPE_OPENFABRICS``, ``PMIX_DEVTYPE_DMA``,
   ``PMIX_DEVTYPE_COPROC``, and others defined in ``pmix_common.h``.
-* ``PMIX_DEVICE_ID`` (``"pmix.dev.id"``) |mdash| a system-wide UUID or node-local
-  OS name (``char*``) identifying a particular device. A device may also be
-  named by its vendor identity (e.g., an NVIDIA ``GPU-`` UUID) or its PCI bus
-  id (``"0000:06:00.0"``). The attribute may be given more than once to request
-  distances to several devices.
+* ``PMIX_DEVICE_ID`` (``"pmix.dev.id"``) |mdash| a ``char*`` naming one device
+  whose distance is to be computed. The attribute may be given more than once
+  to request distances to several devices. See `NAMING A DEVICE`_ below for
+  what the string may contain. Any other value type returns
+  ``PMIX_ERR_BAD_PARAM`` |mdash| in particular, the ``pmix_data_array_t`` of
+  ``pmix_device_t`` that :ref:`PMIx_Get(3) <man3-PMIx_Get>` returns for this
+  key, which reports the devices a process was *assigned*, is not accepted
+  here; pass the ``uuid`` of each element instead.
 * ``PMIX_DEVICE_DIST_ORIGIN`` (``"pmix.dev.dist.origin"``) |mdash| a ``char*``
   naming the device from which distances are to be computed, in any of the
   forms accepted by ``PMIX_DEVICE_ID``, in place of a process location. The
   ``cpuset`` argument is ignored when this directive is given. Returns
   ``PMIX_ERR_NOT_FOUND`` if no device answers to the name, and
   ``PMIX_ERR_BAD_PARAM`` if more than one does.
+
+
+NAMING A DEVICE
+---------------
+
+``PMIX_DEVICE_ID`` and ``PMIX_DEVICE_DIST_ORIGIN`` name a device on the node
+whose topology is being searched. A device answers to any of the following
+spellings, compared without regard to case:
+
+* **The device's PMIx UUID**, exactly as reported in the ``uuid`` field of a
+  :ref:`pmix_device_t(5) <man5-pmix_device_t>` or
+  :ref:`pmix_device_distance_t(5) <man5-pmix_device_distance_t>` |mdash| e.g.,
+  ``gpu://node01::cuda0`` or
+  ``fab://0e1a:2b3c:0000:0020::0e1a:2b3c:0000:0020``. Every form is listed
+  in :ref:`pmix_device_t(5) <man5-pmix_device_t>`.
+* **The name of any of its operating system devices** |mdash| e.g.,
+  ``mlx5_0``, ``ib0``, ``eth0``, ``cuda0`` or ``nvme0n1``. These are the
+  names in the ``osname`` field and the device names ``lstopo`` shows; for
+  network adapters and disks they are the operating system's own, as
+  ``ip link``, ``ibv_devices`` and ``lsblk`` print them.
+* **Its vendor identity** |mdash| e.g.,
+  ``GPU-5b1e3c2a-8f4d-4a6b-9c0e-2d7f1a3b4c5d``, the UUID ``nvidia-smi -L``
+  prints for an NVIDIA GPU. This is the identity hwloc records for a GPU
+  (its ``NVIDIAUUID``, ``AMDUUID`` or ``LevelZeroUUID`` attribute), so it is
+  available only where the topology carries it: from hwloc's vendor
+  backend, or for an NVIDIA GPU from its driver.
+* **The PCI bus id of its function** |mdash| e.g., ``0000:06:00.0``, as
+  ``lspci -D`` prints it, or ``00000000:06:00.0``, as ``nvidia-smi`` does.
+  The fields are compared by value, so the domain may be given at any width
+  up to eight hex digits, but it must be present.
+
+Every operating system device on the device's PCI function counts, not only
+the one reported in ``osname``: an InfiniBand adapter reported as ``mlx5_0``
+also answers to ``ib0``, and naming both returns the adapter once. When
+``PMIX_DEVICE_TYPE`` is given too, a named device is reported only if it is
+of one of those types. A ``PMIX_DEVICE_ID`` that names no device on the node
+contributes nothing to the result; ``PMIX_ERR_NOT_FOUND`` is returned only
+if no requested device was found at all. ``PMIX_DEVICE_DIST_ORIGIN``, by
+contrast, must name exactly one device.
+
+The simplest way to obtain a valid name is to ask for distances without
+naming a device and read the names back from the result. For example, to
+find the network devices nearest the first GPU the process can see:
+
+.. code-block:: c
+
+   pmix_device_distance_t *dist = NULL, *nics = NULL;
+   size_t ndist = 0, nnics = 0, n;
+   pmix_device_type_t gpu = PMIX_DEVTYPE_GPU, net = PMIX_DEVTYPE_NETWORK |
+                                                   PMIX_DEVTYPE_OPENFABRICS;
+   pmix_info_t info[2];
+   pmix_status_t rc;
+
+   /* topo was filled in by PMIx_Load_topology() and cpuset by
+    * PMIx_Get_cpuset() */
+
+   /* what GPUs are there, and what are they called? */
+   PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_TYPE, &gpu, PMIX_DEVTYPE);
+   rc = PMIx_Compute_distances(&topo, &cpuset, info, 1, &dist, &ndist);
+   PMIX_INFO_DESTRUCT(&info[0]);
+   if (PMIX_SUCCESS != rc || 0 == ndist) {
+       return rc;
+   }
+   /* dist[0].uuid is, e.g., "gpu://node01::cuda0" and dist[0].osname
+    * "cuda0"; either names that GPU */
+
+   /* measure from that GPU to the NICs */
+   PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_DIST_ORIGIN, dist[0].uuid, PMIX_STRING);
+   PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_TYPE, &net, PMIX_DEVTYPE);
+   rc = PMIx_Compute_distances(&topo, NULL, info, 2, &nics, &nnics);
+   PMIX_INFO_DESTRUCT(&info[0]);
+   PMIX_INFO_DESTRUCT(&info[1]);
+   for (n = 0; PMIX_SUCCESS == rc && n < nnics; n++) {
+       printf("%s (%s): %u\n", nics[n].osname, nics[n].uuid, nics[n].mindist);
+   }
+   PMIx_Device_distance_free(dist, ndist);
+   PMIx_Device_distance_free(nics, nnics);
+
+A device can equally be named by what the caller already knows about it.
+To ask how far the process is from two specific adapters:
+
+.. code-block:: c
+
+   pmix_info_t info[2];
+
+   PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_ID, "mlx5_0", PMIX_STRING);
+   PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_ID, "0000:c1:00.0", PMIX_STRING);
+   rc = PMIx_Compute_distances(&topo, &cpuset, info, 2, &dist, &ndist);
+
+A process that was assigned devices by its host |mdash| see ``PMIX_DEVICE_ID``
+in :ref:`PMIx_Get(3) <man3-PMIx_Get>` |mdash| names each one by the ``uuid``
+of the corresponding element of the array it retrieved.
 
 
 RETURN VALUE
@@ -199,6 +294,12 @@ a PMIx error constant is returned, including:
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
   library's progress engine has been stopped.
+* ``PMIX_ERR_NOT_FOUND`` |mdash| no device of the requested type(s), or none of
+  the devices named by ``PMIX_DEVICE_ID``, exists on the node; or the device
+  named by ``PMIX_DEVICE_DIST_ORIGIN`` does not.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| a ``PMIX_DEVICE_ID`` or
+  ``PMIX_DEVICE_DIST_ORIGIN`` value is not a ``char*``, or the
+  ``PMIX_DEVICE_DIST_ORIGIN`` name matches more than one device.
 * ``PMIX_ERR_UNREACH`` |mdash| the request could not be satisfied locally and the
   local PMIx server could not be reached (or the caller is a server, or is not
   connected to a server).

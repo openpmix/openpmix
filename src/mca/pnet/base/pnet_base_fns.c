@@ -341,12 +341,14 @@ pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t *proc,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     darray = kv->value->data.darray;
-    /* and it must really be an array of devices.  PMIX_DEVICE_ID is
-     * documented as a string, and the library reads it that way elsewhere,
-     * so a host with more than one device to report can just as reasonably
-     * hand us an array of names - reading that as pmix_device_t would walk
-     * off the end of the allocation.  We do not know how to use such an
-     * array, so we decline it rather than trust it */
+    /* and it must really be an array of devices.  PMIX_DEVICE_ID is a
+     * string everywhere except in a process's own proc info, where it is
+     * an array of pmix_device_t - but the host stored it, so the element
+     * type is its word and not ours to assume.  A host that carried the
+     * string form over to the plural case would hand us an array of
+     * names, and reading that as pmix_device_t would walk off the end of
+     * the allocation.  We do not know how to use such an array, so we
+     * decline it rather than trust it */
     if (PMIX_DEVICE != darray->type || NULL == darray->array) {
         PMIX_DESTRUCT(&cb);
         return PMIX_ERR_TAKE_NEXT_OPTION;

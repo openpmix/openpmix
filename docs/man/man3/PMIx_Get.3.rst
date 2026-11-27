@@ -381,6 +381,40 @@ available:
   ``PMIX_FABRIC_DEVICE_ID``, the ``PMIX_FABRIC_SWITCH`` to which it is connected,
   and a comma-delimited string of the peer ranks sharing that switch.
 
+**Device assignment**
+
+* ``PMIX_DEVICE_ID`` (pmix_data_array_t\*) |mdash| the device(s) the host
+  assigned to the specified process, e.g., the devices it was mapped against.
+  The value is an array of :ref:`pmix_device_t(5) <man5-pmix_device_t>`, and is
+  an array even when it holds a single device; each element gives the
+  device's UUID (e.g., ``gpu://node01::cuda0``; every form is listed in
+  :ref:`pmix_device_t(5) <man5-pmix_device_t>`), OS name and type. The key is
+  absent when the process was assigned no device. This form is particular to
+  a process's own information: everywhere else |mdash| as a directive to
+  :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`, or inside a
+  ``PMIX_FABRIC_DEVICE`` or ``PMIX_SWITCH_PEERS`` array |mdash|
+  ``PMIX_DEVICE_ID`` is a ``char*`` naming a single device. To ask how far
+  the process is from an assigned device, pass that element's ``uuid`` to
+  :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>` as a
+  ``PMIX_DEVICE_ID``.
+
+  .. code-block:: c
+
+     pmix_value_t *val = NULL;
+     pmix_device_t *devs;
+     size_t n;
+
+     if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_DEVICE_ID, NULL, 0, &val)) {
+         if (PMIX_DATA_ARRAY == val->type &&
+             PMIX_DEVICE == val->data.darray->type) {
+             devs = (pmix_device_t *) val->data.darray->array;
+             for (n = 0; n < val->data.darray->size; n++) {
+                 printf("assigned %s (%s)\n", devs[n].osname, devs[n].uuid);
+             }
+         }
+         PMIX_VALUE_RELEASE(val);
+     }
+
 
 RETURN VALUE
 ------------

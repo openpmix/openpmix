@@ -1725,11 +1725,32 @@ typedef uint32_t pmix_rank_t;
                                                                    //         devices of the specified type on the local node.
 #define PMIX_DEVICE_TYPE                    "pmix.dev.type"        // (pmix_device_type_t) Bitmask specifying the type(s) of device(s) whose
                                                                    //         information is being requested. Only used as a directive/qualifier.
-#define PMIX_DEVICE_ID                      "pmix.dev.id"          // (char*) System-wide UUID or node-local OS name of a particular device.
-                                                                   //         When used to report the device(s) a process has been
-                                                                   //         assigned - e.g. in that process's own proc info - the
-                                                                   //         value is instead a pmix_data_array_t of pmix_device_t,
-                                                                   //         and is an array even when it holds one device.
+#define PMIX_DEVICE_ID                      "pmix.dev.id"          // (char*) Identifies a device. The value takes one of two types:
+                                                                   //         - (pmix_data_array_t*) of pmix_device_t ONLY when it is a
+                                                                   //           process's own information, as retrieved by
+                                                                   //           PMIx_Get(proc, PMIX_DEVICE_ID, ...): the device(s) the
+                                                                   //           host assigned to that process, e.g., those it was
+                                                                   //           mapped against. It is an array even when it holds a
+                                                                   //           single device, and is absent when the process was
+                                                                   //           assigned none.
+                                                                   //         - (char*) naming one device everywhere else. That includes
+                                                                   //           its use as a directive to PMIx_Compute_distances, where
+                                                                   //           it may be given more than once to name several devices,
+                                                                   //           and as an element of the arrays describing a fabric
+                                                                   //           device (PMIX_FABRIC_DEVICE, PMIX_SWITCH_PEERS) that a
+                                                                   //           host registers and a process retrieves.
+                                                                   //         What the string must contain depends on its reader.
+                                                                   //         PMIx_Compute_distances accepts, without regard to case,
+                                                                   //         any of: the device's PMIx UUID, exactly as reported in the
+                                                                   //         uuid field of a pmix_device_t or pmix_device_distance_t
+                                                                   //         (e.g., "gpu://node01::cuda0" or
+                                                                   //         "fab://0e1a:2b3c:0000:0020::0e1a:2b3c:0000:0020" - see
+                                                                   //         pmix_device_t(5) for every form); its node-local OS name
+                                                                   //         (e.g., "mlx5_0", "cuda0", "eth0"); its vendor identity
+                                                                   //         (e.g., an NVIDIA "GPU-<uuid>"); or the PCI bus id of its
+                                                                   //         function (e.g., "0000:06:00.0"). Within fabric-device
+                                                                   //         information the string is whatever the host registered,
+                                                                   //         and PMIx_server_deregister_resources matches it exactly.
 #define PMIX_DEVICE_DIST_ORIGIN             "pmix.dev.dist.origin" // (char*) Compute distances from the named device instead of from a
                                                                    //         process location - e.g., the NICs nearest a GPU. The device may
                                                                    //         be named by its UUID, the OS name of any of its OS devices, its
