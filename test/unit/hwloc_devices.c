@@ -1304,6 +1304,9 @@ static void test_device_distances(const char *dir)
     const char *near[][2] = {{"rdmap16s0", "rdmap17s0"}, {"rdmap32s0", "rdmap33s0"},
                              {"rdmap48s0", "rdmap49s0"}, {"rdmap64s0", "rdmap65s0"}};
     const char *spellings[] = {"0000:13:00.0", "GPU-00000000-1111-2222-3333-444444444444"};
+    const char *busids[] = {"00000000:13:00.0", "0:13:0.0"};
+    const char *notbusids[] = {"0000:13:00.1", "13:00.0", "000000000:13:00.0",
+                               "0x0:13:00.0", "0000:13:00.0x", "0000:013:00.0"};
     const char *p0nics[] = {"rdmap16s0", "rdmap17s0", "mlx5_0", "rdmap32s0", "rdmap33s0"};
     const char *p1nics[] = {"rdmap48s0", "rdmap49s0", "rdmap64s0", "rdmap65s0"};
     bool good;
@@ -1319,6 +1322,39 @@ static void test_device_distances(const char *dir)
                                     &devs, &ndevs);
         ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].dev.osname, "cuda0"),
            "device distance: a GPU is found by its PCI bus id and by its vendor uuid");
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* --- a bus id is compared by value, not as text ---
+     * nvidia-smi prints the domain eight digits wide where lspci -D and
+     * hwloc print four, and either way it is the same function.  Matching
+     * the string as text found nothing for a bus id copied from
+     * nvidia-smi. */
+    for (i = 0; i < sizeof(busids) / sizeof(busids[0]); i++) {
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, busids[i],
+                                    &devs, &ndevs);
+        if (PMIX_SUCCESS != rc || 1 != ndevs) {
+            fprintf(stderr, "  bus id \"%s\": rc %d, %u devices\n", busids[i], rc,
+                    (unsigned) ndevs);
+        }
+        ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].dev.osname, "cuda0"),
+           "device distance: a bus id with any domain width names the GPU");
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+    /* ...but only a well-formed bus id of that function: another function,
+     * a missing domain, an over-wide field, a "0x" and a trailing suffix
+     * name nothing */
+    for (i = 0; i < sizeof(notbusids) / sizeof(notbusids[0]); i++) {
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, notbusids[i],
+                                    &devs, &ndevs);
+        if (PMIX_SUCCESS != rc || 0 != ndevs) {
+            fprintf(stderr, "  \"%s\": rc %d, %u devices\n", notbusids[i], rc,
+                    (unsigned) ndevs);
+        }
+        ok(PMIX_SUCCESS == rc && 0 == ndevs,
+           "device distance: a malformed or different bus id names nothing");
         pmix_hwloc_release_devices(devs, ndevs);
         devs = NULL;
     }

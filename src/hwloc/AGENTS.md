@@ -442,6 +442,20 @@ Two consequences that are load-bearing:
   `PMIX_DEVICE_DISTANCES` reports these GPUs too, under the same names —
   deliberately, since the enumeration and the distances must agree.
   Covered by `test_3d_controllers`.
+- **A caller's bus id is compared by value, not as text.** `osdev_named()`
+  accepts a device's PCI bus id as one of its names, and the tools a
+  caller copies one from print it differently: `lspci -D` and hwloc give
+  the domain four hex digits (`0000:06:00.0`), `nvidia-smi` eight
+  (`00000000:06:00.0`). It used to `strcasecmp` the caller's string
+  against hwloc's rendering, so a bus id taken from `nvidia-smi` named
+  nothing. `busid_named()` parses the four fields instead - domain
+  required, each field plain hex of at most its width, so a sign, a `0x`
+  or a trailing suffix is not taken for a number - and compares them with
+  the function's. The bus id PMIx *reports* (`busid`, a GPU's `osname`
+  and uuid) is still rendered four-wide, and a uuid is still matched as
+  text: it is meant to be copied back exactly. Covered by
+  `test_device_distances` in
+  [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c).
 - **A device's vendor identity is usually absent, and that is not a
   failure.** `pmix_hwloc_device_t.vendor_id` carries the vendor's own name
   for the device — NVIDIA's `GPU-<uuid>` and its AMD and Level Zero
