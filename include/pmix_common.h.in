@@ -1673,13 +1673,13 @@ typedef uint32_t pmix_rank_t;
                                                                    //         the call to PMIx_Get. Returns a pmix_data_array_t array of
                                                                    //         pmix_info_t results, each element containing the PMIX_SWITCH_PEERS
                                                                    //         key with a three-element pmix_data_array_t array of pmix_info_t
-                                                                   //         containing the PMIX_FABRIC_DEVICE_ID of the local fabric device,
+                                                                   //         containing the PMIX_DEVICE_ID of the local fabric device,
                                                                    //         the PMIX_FABRIC_SWITCH identifying the switch to which it is
                                                                    //         connected, and a comma-delimited string of peer ranks sharing the
                                                                    //         switch to which that device is connected.
 #define PMIX_FABRIC_DEVICE                  "pmix.fabdev"          // (pmix_data_array_t*) An array of pmix_info_t describing a particular
                                                                    //         fabric device. The first element in the array shall be the
-                                                                   //         PMIX_FABRIC_DEVICE_ID of the device
+                                                                   //         PMIX_DEVICE_ID of the device
 #define PMIX_FABRIC_DEVICES                 "pmix.fab.devs"        // (pmix_data_array_t*) Array of pmix_info_t containing information for all
                                                                    //         devices on the specified node. Each element of the array will contain
                                                                    //         a PMIX_FABRIC_DEVICE entry, which in turn will contain an array of
