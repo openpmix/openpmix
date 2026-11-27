@@ -2674,10 +2674,43 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, hwloc_obj_t pci,
  *
  * "osdev" is NULL for a GPU reported only as its PCI function, which then
  * answers to its bus id and its uuid. */
+/* Does "devid" spell the bus id of this PCI function?  The fields are
+ * compared by value rather than the string as text, because the tools a
+ * caller copies a bus id from disagree on how wide to print the domain:
+ * lspci -D and hwloc print four hex digits ("0000:06:00.0"), nvidia-smi
+ * prints eight ("00000000:06:00.0"), and both name the same function.
+ * The domain is required - without it a bus id is ambiguous on a machine
+ * with more than one PCI domain - and each field must be plain hex digits
+ * of at most its width, so nothing that merely parses as a number (a sign,
+ * a "0x", a trailing suffix) is taken for one. */
+static bool busid_named(hwloc_obj_t pci, const char *devid)
+{
+    static const char seps[4] = {':', ':', '.', '\0'};
+    static const size_t maxlen[4] = {8, 2, 2, 1};
+    unsigned long field[4];
+    const char *p = devid;
+    size_t n, len;
+
+    for (n = 0; n < 4; n++) {
+        for (len = 0; isxdigit((unsigned char) p[len]); len++) {
+            ;
+        }
+        if (0 == len || maxlen[n] < len || seps[n] != p[len]) {
+            return false;
+        }
+        field[n] = strtoul(p, NULL, 16);
+        p += len + 1;
+    }
+    return (field[0] == pci->attr->pcidev.domain &&
+            field[1] == pci->attr->pcidev.bus &&
+            field[2] == pci->attr->pcidev.dev &&
+            field[3] == pci->attr->pcidev.func);
+}
+
 static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
                         const char *hostname, const char *devid)
 {
-    char *uuid = NULL, busid[32];
+    char *uuid = NULL;
     const char *val;
     unsigned k;
     bool found;
@@ -2700,10 +2733,7 @@ static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
         }
     }
     if (NULL != pci) {
-        snprintf(busid, sizeof(busid), "%04x:%02x:%02x.%01x",
-                 pci->attr->pcidev.domain, pci->attr->pcidev.bus,
-                 pci->attr->pcidev.dev, pci->attr->pcidev.func);
-        if (0 == strcasecmp(devid, busid)) {
+        if (busid_named(pci, devid)) {
             return true;
         }
         /* an identity read from the driver sits on the function */
