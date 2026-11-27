@@ -151,7 +151,11 @@ Highlights
   with no OS device is counted as a GPU and named by its PCI bus id.
   Where any of a process's GPUs cannot be named to its runtime, the
   visible-devices variable is not set, so the process sees every GPU
-  rather than having one it was given hidden. ``PMIX_CAP_DEVICE_ENUM``.
+  rather than having one it was given hidden. An NVIDIA GPU is named to
+  CUDA even where hwloc was built without NVML, from the identity the
+  NVIDIA driver publishes for it; a host that discovers the topology
+  itself records that identity with
+  ``pmix_hwloc_add_driver_identities()``. ``PMIX_CAP_DEVICE_ENUM``.
 
 * **NICs are named to the libraries that use them.** A process mapped
   against network devices is told which through the variable its fabric
@@ -245,7 +249,9 @@ Highlights
 * **Self-started tools keep namespaces of their own.** The namespace a
   tool names for itself is never merged into a job the host registers;
   a host registration of that name takes it back, and the namespace is
-  released when its last tool leaves. ``PMIX_CAP_TOOL_NSPACE_RELEASE``.
+  released when its last tool leaves. A tool that names itself keeps
+  that name when its optional connection (``PMIX_TOOL_CONNECT_OPTIONAL``)
+  finds no server. ``PMIX_CAP_TOOL_NSPACE_RELEASE``.
 
 * **Registering a rank again updates it,** and returns the new success
   status ``PMIX_UPDATED``.
@@ -266,6 +272,17 @@ Highlights
   of the same process with no directives, so a get for a key a peer
   never posted no longer fails the other gets for that peer.
 
+* **A get returns the copy meant for the reader.** A key posted at both
+  ``PMIX_LOCAL`` and ``PMIX_REMOTE`` scope with different values -- as
+  Open MPI's UCX layer posts its addresses -- is answered from the
+  ``PMIX_LOCAL`` copy for a reader on the poster's node and from the
+  ``PMIX_REMOTE`` copy for any other, under ``gds/shmem3`` and
+  ``gds/hash`` alike, and ``PMIX_GET_REFRESH_CACHE`` brings back the
+  same. A ``PMIX_DATA_SCOPE`` on the get names where the target is, and
+  one that contradicts that finds nothing. The host's own gets, and the
+  library's fence, direct-modex, and connect collection, read the data
+  as stored. The rules are set out in ``docs/how-things-work``.
+
 * **PMIX_ANL_MAP on request.** When the host does not supply it, a
   server computes ``PMIX_ANL_MAP`` from the job's node list and each
   node's local peers, so MPICH need not resolve its peers node by node.
@@ -284,6 +301,28 @@ Highlights
   sizes an allocation, and the datatype of each element is verified
   before it is read -- across ``bfrops``, ``gds``, ``pstat``, ``ptl``,
   the event system, and the client, server, and tool message handlers.
+
+* **A value of every type is handled.** The ``pmix_value_t`` union
+  gains ``infodirs``, ``dtype``, and ``channel`` members, without
+  changing its size or layout, so a ``PMIX_INFO_DIRECTIVES``,
+  ``PMIX_DATA_TYPE``, or ``PMIX_IOF_CHANNEL`` value can be loaded,
+  transferred, stored, compared, and printed. A ``PMIX_NODE_PID`` value
+  can be transferred and released, a registered attribute's type
+  arrives intact, ``PMIx_Value_string`` prints every type, and a
+  pointer-backed value with nothing behind it is refused by pack with
+  ``PMIX_ERR_BAD_PARAM`` rather than dereferenced.
+
+* **Python bindings reviewed.** A server-module up-call written in
+  Python completes its request exactly once, whatever the handler
+  returns or raises; every method that can wait releases the GIL, so
+  Python run by the progress thread meanwhile -- an event handler, a
+  callback, an up-call -- no longer deadlocks against it; and a method
+  that must wait for the progress thread refuses a call made on it.
+  Every data type converts in both directions, alone and in arrays,
+  with integers checked against their range. ``register_session`` and
+  ``deregister_session`` are bound, the ``PMIX_PROC_STATE_*`` constants
+  are present, and the man pages show the Python form of each method
+  and type.
 
 * **Email logging is configurable.** ``plog/smtp`` takes its recipients
   and sender from MCA parameters, accepts ``PMIX_LOG_EMAIL_MSG`` as the
@@ -331,8 +370,10 @@ Highlights
 * **Testing.** New unit tests, multi-node Docker Swarm suites,
   multi-user output-file tests, AddressSanitizer CI, cross-version CI
   with clients back to v2.1, a CI build without support for earlier
-  releases, and topologies from Slingshot, CN5000, MI350, and AWS GPU
-  nodes as device-discovery fixtures.
+  releases, topologies from Slingshot, CN5000, MI350, and AWS GPU
+  nodes as device-discovery fixtures, and a CI check of each pull
+  request's public headers for changes that break programs built
+  against the earlier ones.
 
 Compatibility notes
 ^^^^^^^^^^^^^^^^^^^
@@ -341,7 +382,16 @@ Compatibility notes
 
 * **Out-of-tree MCA components must be rebuilt** against the v7
   headers; framework versions are now checked at load time, and the
-  ``pnet`` interface is at 4.0.0. ``PMIX_CAP_MCA_FW_VERSION``.
+  ``pnet`` interface is at 4.0.0, and the ``gds`` interface at 3.0.0.
+  ``PMIX_CAP_MCA_FW_VERSION``.
+
+* **pmix_server_module_t has the v5.0 and v6.0 layout again.** v6.1.0
+  moved ``session_control`` and ``resource_block`` behind the new
+  ``tool_connected2`` and ``log2``. Those two now follow
+  ``resource_block``, so each member is at the offset it had when first
+  released. A host built against v6.1 must be rebuilt, and one that
+  fills the structure with positional initializers must be corrected.
+  The v6.x series has been withdrawn; see :ref:`label-v6-withdrawn`.
 
 * **Earlier releases are supported only when built for.** A default
   build speaks only this release's wire format and has no TCP
@@ -421,6 +471,17 @@ Compatibility notes
   construct that asked for ``PMIX_GROUP_FT_COLLECTIVE``,
   ``PMIX_ERR_LOST_CONNECTION`` is a degraded success, and the group
   forms on the survivors.
+
+* A direct-modex request no longer passes the reader's
+  ``PMIX_DATA_SCOPE`` to the host. A request naming
+  ``PMIX_REQUIRED_KEY`` waits until that key is posted at
+  ``PMIX_REMOTE`` or ``PMIX_GLOBAL`` scope, and a key posted only at
+  ``PMIX_LOCAL`` is reported to the requester as not found. Per-process
+  data the host supplies is stored at ``PMIX_GLOBAL`` scope.
+
+* A rank's ``PMIX_NODEID`` is the ID the host gave its node, where it
+  was the node's index in the job map; a node the host gave no ID takes
+  its map index, as before.
 
 * Group membership keeps the order the host provided, and group ranks
   follow it. ``PMIX_GROUP_FINAL_MEMBERSHIP_ORDER`` is deprecated and
@@ -513,9 +574,13 @@ Compatibility notes
 
 * The provisional resource-usage structures of v5.0
   (``pmix_proc_stats_t`` and its relatives), with their data types,
-  functions, and macros, have been removed in favor of the attribute
-  arrays the Standard adopted; use ``PMIx_Process_monitor``. Three
-  attributes that shared another attribute's string in v5.0 --
+  functions, and macros, are deprecated in favor of the attribute
+  arrays the Standard adopted; use ``PMIx_Process_monitor``. They remain
+  in ``pmix_deprecated.h`` with their v5.0 values so that a program
+  built against v5.0 still loads, but nothing produces or accepts them:
+  each ``*_create`` function returns ``NULL`` and the others do
+  nothing. Three attributes that shared another attribute's string in
+  v5.0 --
   ``PMIX_FABRIC_DEVICE_COORDINATES``,
   ``PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT``, and
   ``PMIX_QUERY_SUPPORTED_QUALIFIERS`` -- now have strings of their own.
