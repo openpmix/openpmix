@@ -156,7 +156,7 @@ should. The sections after this one give the full tables.
        be changed by another user (a Kubernetes ``emptyDir``, say)
      - the server fails to initialize.
      - Use another directory, or set ``ptl_base_tmpdir_check`` to
-       ``warn`` or ``silent``.
+       ``warn`` or ``silent``. See :ref:`label-sysadmin-containers`.
    * - The temporary directory's path is long (macOS's default
        ``$TMPDIR``, for one)
      - the server fails to initialize: the socket's path is limited to

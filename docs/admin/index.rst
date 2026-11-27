@@ -9,7 +9,11 @@ system. It covers:
 * which PMIx release to install, and why one is enough;
 * how PMIx and PRRTE releases pair up, including the series that do
   not work together;
-* how PMIx authenticates connections, and how to control it.
+* how PMIx authenticates connections, and how to control it;
+* what a PMIx server needs from a container's file system - in
+  particular, the setting a Kubernetes pod with an ``emptyDir`` at
+  ``/tmp`` needs before a server will start there
+  (:ref:`label-sysadmin-containers`).
 
 Many behaviors need a build option, a site setting, and an attribute
 from the host environment together. :ref:`label-settings-matrix`
@@ -30,3 +34,4 @@ host the PMIx server.
    releases
    prrte
    authentication
+   containers
