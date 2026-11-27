@@ -378,7 +378,7 @@ available:
   switch with the specified process. Returns an array of ``pmix_info_t``, one per
   local fabric device; each element is itself a ``PMIX_SWITCH_PEERS`` entry
   holding a three-element array that gives the device's
-  ``PMIX_FABRIC_DEVICE_ID``, the ``PMIX_FABRIC_SWITCH`` to which it is connected,
+  ``PMIX_DEVICE_ID``, the ``PMIX_FABRIC_SWITCH`` to which it is connected,
   and a comma-delimited string of the peer ranks sharing that switch.
 
 **Device assignment**
