@@ -92,7 +92,7 @@ and ``<osname>`` is the device's ``osname``.
 Note that the ``ipv4://`` and ``ipv6://`` forms carry the interface's
 *hardware* address, not an IP address; the scheme distinguishes the two
 address lengths and says nothing about the protocol running over the
-interface.
+interface. The address alone, without the scheme, also names the interface.
 
 A UUID is reported by the library and is meant to be read, not constructed:
 a program that needs one obtains it from the ``uuid`` field of a

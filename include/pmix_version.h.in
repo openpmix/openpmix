@@ -86,6 +86,10 @@
  * as the value of PMIX_DEVICE_ID and PMIX_DEVICE_DIST_ORIGIN, in addition
  * to a string. Without this, only a string is accepted. */
 #define PMIX_CAP_DEVICE_ID_STRUCT 31
+/* PMIx_Compute_distances accepts a network interface's hardware address
+ * (e.g., "00:1b:21:63:5f:cd") as a PMIX_DEVICE_ID or
+ * PMIX_DEVICE_DIST_ORIGIN naming that interface */
+#define PMIX_CAP_DEVICE_ID_MAC   32
 
 
 /*****    DEPRECATED    *****/

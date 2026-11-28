@@ -223,6 +223,12 @@ spellings, compared without regard to case:
   ``lspci -D`` prints it, or ``00000000:06:00.0``, as ``nvidia-smi`` does.
   The fields are compared by value, so the domain may be given at any width
   up to eight hex digits, but it must be present.
+* **A network interface's hardware address** |mdash| e.g.,
+  ``00:1b:21:63:5f:cd``, as ``ip link`` prints it: the MAC of an Ethernet
+  port, or the 20-byte address of an IP-over-InfiniBand one. Some
+  configurations give two interfaces one address |mdash| Azure's accelerated
+  networking gives the synthetic interface and its virtual function the same
+  MAC |mdash| and then the address names both.
 
 A ``pmix_device_t`` is resolved by its ``osname`` when it has one, and by its
 ``uuid`` otherwise; its ``type`` is not consulted. The ``osname`` comes first
@@ -343,8 +349,9 @@ NOTES
 
 The ``pmix_device_t`` forms of ``PMIX_DEVICE_ID`` and
 ``PMIX_DEVICE_DIST_ORIGIN`` are accepted where ``PMIX_CAP_DEVICE_ID_STRUCT``
-is defined in ``pmix_version.h``; an earlier library refuses them with
-``PMIX_ERR_BAD_PARAM``, or finds no device. When the request is
+is defined in ``pmix_version.h``, and naming a network interface by its
+hardware address where ``PMIX_CAP_DEVICE_ID_MAC`` is. An earlier library
+answers either with an error or by finding no device. When the request is
 relayed to the local server, each device is sent as the name it is resolved
 by, so a server that predates these forms answers it correctly.
 
