@@ -2134,6 +2134,81 @@ static void test_driver_identities(const char *dir)
     remove_driver_tree(root, made);
 }
 
+/* A network interface answers to its hardware address - the MAC of an
+ * Ethernet port, the 20-byte address of an IP-over-InfiniBand one - which
+ * is what the ipv4:// and ipv6:// uuids carry after the scheme.  An
+ * address two interfaces share names both, and so cannot be an origin. */
+static void test_mac_names(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    pmix_device_distance_t *dist = NULL;
+    size_t ndevs = 0, ndist = 0, i;
+    const char *macs[] = {"00:0a:f7:11:00:00", "00:0A:F7:11:00:00"};
+    char path[PATH_MAX];
+    pmix_status_t rc;
+
+    /* an Ethernet MAC, in either case, names its port's function */
+    snprintf(path, sizeof(path), "%s/rdma-fabrics.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "mac: rdma-fabrics.xml loads");
+        return;
+    }
+    for (i = 0; i < sizeof(macs) / sizeof(macs[0]); i++) {
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, macs[i],
+                                    &devs, &ndevs);
+        if (PMIX_SUCCESS != rc || 1 != ndevs) {
+            fprintf(stderr, "  mac \"%s\": rc %d, %u devices\n", macs[i], rc,
+                    (unsigned) ndevs);
+        }
+        ok(PMIX_SUCCESS == rc && 1 == ndevs && NULL != devs[0].busid
+               && 0 == strcmp(devs[0].busid, "0000:11:00.0"),
+           "mac: an Ethernet MAC names its port");
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+    /* one digit off is nobody's */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, "00:0a:f7:11:00:01",
+                                &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 0 == ndevs, "mac: an address no interface has names nothing");
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    free_topo(&topo);
+
+    /* a 20-byte IP-over-InfiniBand address names the adapter */
+    if (0 != load_multi_rc(dir, &topo)) {
+        return;
+    }
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN,
+                                "00:00:10:87:fe:80:00:00:00:00:00:00:b8:59:9f:03:00:a1:b2:c3",
+                                &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs, "mac: an IPoIB hardware address names its adapter");
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    free_topo(&topo);
+
+    /* Azure's accelerated networking gives the synthetic interface and its
+     * VF one MAC: the address names both, which is the honest answer for
+     * PMIX_DEVICE_ID and an ambiguity for an origin */
+    snprintf(path, sizeof(path), "%s/test-topo.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "mac: test-topo.xml loads");
+        return;
+    }
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, "60:45:bd:45:45:87",
+                                &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 2 == ndevs, "mac: a shared MAC names every interface carrying it");
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    rc = dist_from(&topo, "60:45:bd:45:45:87", &dist, &ndist);
+    ok(PMIX_ERR_BAD_PARAM == rc && NULL == dist,
+       "mac: a shared MAC is refused as an origin rather than guessed at");
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+    }
+    free_topo(&topo);
+}
+
 /* Load one PMIX_DEVICE_ID/PMIX_DEVICE_DIST_ORIGIN value as an array of
  * devices named as given (NULL leaves that name unset) */
 static void load_devarray(pmix_info_t *info, const char *key, size_t n,
@@ -2414,6 +2489,7 @@ int main(int argc, char **argv)
     test_aws_p5en(dir);
     test_aws_p6_b200(dir);
     test_driver_identities(dir);
+    test_mac_names(dir);
     test_device_struct_inputs(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",

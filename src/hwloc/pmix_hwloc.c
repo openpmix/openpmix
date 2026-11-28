@@ -2872,6 +2872,19 @@ static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
         if (0 == strcasecmp(devid, osdev->name)) {
             return true;
         }
+        /* a network interface's hardware address, as hwloc records it
+         * and "ip link" prints it - the MAC of an Ethernet port, the
+         * 20-byte address of an IP-over-InfiniBand one.  It is what the
+         * ipv4:// and ipv6:// uuids carry after the scheme, so a caller
+         * holding only the address need not know which scheme it would
+         * be wrapped in.  No bus id can take this shape: a bus id's
+         * third separator is a '.' */
+        if (HWLOC_OBJ_OSDEV_NETWORK == osdev->attr->osdev.type) {
+            val = hwloc_obj_get_info_by_name(osdev, "Address");
+            if (NULL != val && 0 == strcasecmp(devid, val)) {
+                return true;
+            }
+        }
         for (k = 0; NULL != vendor_id_keys[k].key; k++) {
             val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k].key);
             if (NULL != val && 0 == strcasecmp(devid, val)) {

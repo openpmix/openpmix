@@ -1748,13 +1748,14 @@ typedef uint32_t pmix_rank_t;
                                                                    //         pmix_device_t(5) for every form); its node-local OS name
                                                                    //         (e.g., "mlx5_0", "cuda0", "eth0"); its vendor identity
                                                                    //         (e.g., an NVIDIA "GPU-<uuid>"); or the PCI bus id of its
-                                                                   //         function (e.g., "0000:06:00.0"). As a directive to
-                                                                   //         PMIx_Compute_distances it may also be given as a
+                                                                   //         function (e.g., "0000:06:00.0"); or, for a network interface,
+                                                                   //         its hardware address (e.g., "00:1b:21:63:5f:cd"). As a
+                                                                   //         directive to PMIx_Compute_distances it may also be given as a
                                                                    //         pmix_device_t, or as the array of them PMIx_Get returns for a
                                                                    //         process's own PMIX_DEVICE_ID, so a process can pass its
                                                                    //         assignment straight back; each device is resolved by its
                                                                    //         osname, or by its uuid when it has none (see
-                                                                   //         PMIX_CAP_DEVICE_ID_STRUCT). Within
+                                                                   //         PMIX_CAP_DEVICE_ID_STRUCT and PMIX_CAP_DEVICE_ID_MAC). Within
                                                                    //         fabric-device information the string is whatever the host
                                                                    //         registered, and PMIx_server_deregister_resources matches it
                                                                    //         exactly.

@@ -456,6 +456,16 @@ Two consequences that are load-bearing:
   text: it is meant to be copied back exactly. Covered by
   `test_device_distances` in
   [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c).
+- **A network interface answers to its hardware address.**
+  `osdev_named()` matches a caller's name against a network OS device's
+  `Address` info, so `00:1b:21:63:5f:cd` names the port without the
+  `ipv4://` its uuid wraps it in. It cannot be mistaken for a bus id
+  (`busid_named()` requires a `.` as the third separator), but it is not
+  always unique: Azure's accelerated networking gives the synthetic
+  interface and its VF one MAC, so the address names both, and as a
+  `PMIX_DEVICE_DIST_ORIGIN` it is refused as ambiguous.
+  `test/topologies/test-topo.xml` has that pair; `test_mac_names` covers
+  it.
 - **`pmix_hwloc_device_names()` is the one place that says what a device
   directive may hold.** `PMIX_DEVICE_ID` and `PMIX_DEVICE_DIST_ORIGIN`
   accept a string, a `pmix_device_t`, or a data array of them (the
