@@ -2452,6 +2452,53 @@ static void test_device_struct_inputs(const char *dir)
     free_topo(&topo);
 }
 
+/* PMIX_DEVICE_TYPE was read out of the value union without a look at the
+ * type tag, so a string handed in as the type became a bitmask made of
+ * its pointer's bits */
+static void test_device_type_tag(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_device_distance_t *dist = NULL, *ref = NULL;
+    pmix_info_t info[2];
+    uint64_t u64 = PMIX_DEVTYPE_OPENFABRICS;
+    size_t ndist = 0, nref = 0, i;
+    bool good;
+    pmix_status_t rc;
+
+    if (0 != load_multi_rc(dir, &topo)) {
+        return;
+    }
+    rc = dist_from(&topo, "cuda0", &ref, &nref);
+    ok(PMIX_SUCCESS == rc && 0 < nref, "device type: reference distances from cuda0");
+
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_CONSTRUCT(&info[1]);
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_DIST_ORIGIN, "cuda0", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_TYPE, "openfabrics", PMIX_STRING);
+    rc = pmix_hwloc_compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+    ok(PMIX_ERR_BAD_PARAM == rc && NULL == dist && 0 == ndist,
+       "device type: a PMIX_DEVICE_TYPE that is not a device type is refused");
+    PMIX_INFO_DESTRUCT(&info[1]);
+
+    /* a uint64_t is the same bits, and was honored before */
+    PMIX_INFO_CONSTRUCT(&info[1]);
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_TYPE, &u64, PMIX_UINT64);
+    rc = pmix_hwloc_compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+    good = (PMIX_SUCCESS == rc && ndist == nref);
+    for (i = 0; good && i < ndist; i++) {
+        good = (0 == strcmp(dist[i].osname, ref[i].osname));
+    }
+    ok(good, "device type: one loaded as a PMIX_UINT64 still selects");
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+
+    PMIx_Device_distance_free(ref, nref);
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -2491,6 +2538,7 @@ int main(int argc, char **argv)
     test_driver_identities(dir);
     test_mac_names(dir);
     test_device_struct_inputs(dir);
+    test_device_type_tag(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);

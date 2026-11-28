@@ -1780,7 +1780,18 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_TYPE)) {
-                type |= info[n].value.data.devtype;
+                /* the type tag says which union member holds the value.
+                 * pmix_device_type_t is a uint64_t, so a caller who
+                 * loaded it as one has handed us the same bits; anything
+                 * else is not a device type at all */
+                if (PMIX_DEVTYPE == info[n].value.type) {
+                    type |= info[n].value.data.devtype;
+                } else if (PMIX_UINT64 == info[n].value.type) {
+                    type |= info[n].value.data.uint64;
+                } else {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto cleanup;
+                }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
                 /* a name, a pmix_device_t, or the array of them a process
                  * is given as its assignment - each device is one name */
