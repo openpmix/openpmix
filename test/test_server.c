@@ -874,6 +874,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
         } else {
             if (WIFSIGNALED(status)) {
                 cli_info[i].exit_code = WTERMSIG(status) + 128;
+                cli_info[i].term_signal = WTERMSIG(status);
             }
         }
         cli_cleanup(&cli_info[i]);

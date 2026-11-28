@@ -1904,6 +1904,130 @@ static void test_shmem3_job_segment(void)
     PMIX_RELEASE(peer);
 }
 
+/* How many times does needle occur in the packed bytes of b? */
+static size_t buffer_count(pmix_buffer_t *b, const char *needle)
+{
+    const size_t nlen = strlen(needle);
+    size_t n = 0;
+
+    if (NULL == b->base_ptr || b->bytes_used < nlen) {
+        return 0;
+    }
+    for (size_t i = 0; i + nlen <= b->bytes_used; i++) {
+        if (0 == memcmp(&b->base_ptr[i], needle, nlen)) {
+            n++;
+        }
+    }
+    return n;
+}
+
+/* A cached job-info reply that is dropped must be described again, not
+ * rebuilt.
+ *
+ * shmem3 drops its cached reply whenever what a client attaching now
+ * must be told changes - a fence that publishes a local generation, a
+ * deleted key, a session or job update - and builds a fresh one for the
+ * next client that connects. It used to rebuild the job data along
+ * with it: a second registration segment, always named "jobdata", so it
+ * collided with the first. The create removed the live file as a
+ * leftover and put the second one at that path, and the reply described
+ * both segments under the one name. A client mapped the first's address
+ * and size over the second's contents and died on its first fetch - the
+ * run_tests18.pl failure, which needs a client of a namespace to
+ * connect after that namespace's first fence.
+ *
+ * The deleted key is what drops the reply here, because it is the one
+ * of those paths a single process can drive. The second reply has to
+ * name the job segment exactly once. */
+static void test_shmem3_reply_refresh_keeps_job_segment(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t *info, dir;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply;
+    pmix_proc_t proc;
+    pmix_cb_t cb;
+    uint32_t nprocs = 2;
+    char *nodemap, *procmap;
+    const char *segname = "gds-shmem3-rereg.jobdata";
+    size_t first = 0, second = 0;
+
+    fprintf(stdout, "\n-- shmem3 reply refresh --\n");
+
+    PMIX_INFO_LOAD(&dir, PMIX_GDS_MODULE, "shmem3", PMIX_STRING);
+    mod = pmix_gds_base_assign_module(&dir, 1);
+    PMIX_INFO_DESTRUCT(&dir);
+    if (NULL == mod || 0 != strcmp(mod->name, "shmem3")) {
+        fprintf(stdout, "    SKIP  shmem3 is not available in this build\n");
+        return;
+    }
+
+    nodemap = strdup(pmix_globals.hostname);
+    procmap = strdup("0-1");
+    PMIX_INFO_CREATE(info, 3);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+    PMIX_LOAD_NSPACE(ns, "gds-shmem3-rereg");
+    rc = PMIx_server_register_nspace(ns, nprocs, info, 3, NULL, NULL);
+    PMIX_INFO_FREE(info, 3);
+    free(nodemap);
+    free(procmap);
+    report("refresh: the job registers", registered(rc));
+    if (!registered(rc)) {
+        return;
+    }
+
+    /* the first client to connect builds the segments */
+    peer = mkgdspeer("gds-shmem3-rereg", nprocs, mod);
+    reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+    if (PMIX_SUCCESS == rc) {
+        first = buffer_count(reply, segname);
+    }
+    PMIX_RELEASE(reply);
+    report("refresh: the first reply names the job segment once",
+           PMIX_SUCCESS == rc && 1 == first);
+
+    /* something a later client must be told about: drops the reply */
+    PMIX_LOAD_PROCID(&proc, "gds-shmem3-rereg", 0);
+    PMIX_GDS_DEL_KEY(rc, peer->nptr, &proc, "gds.test.withdrawn");
+    report("refresh: a key is withdrawn", PMIX_SUCCESS == rc);
+
+    /* the next client to connect gets a fresh reply */
+    reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+    if (PMIX_SUCCESS == rc) {
+        second = buffer_count(reply, segname);
+    }
+    PMIX_RELEASE(reply);
+    report("refresh: the next reply still names the job segment once",
+           PMIX_SUCCESS == rc && 1 == second);
+    if (1 != second) {
+        fprintf(stdout, "        (register_job_info: %s, named %zu times)\n",
+                PMIx_Error_string(rc), second);
+    }
+
+    /* and what it describes still answers */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-shmem3-rereg", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = PMIX_JOB_SIZE;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("refresh: a job-level key still reads back",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs));
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    PMIX_GDS_DEL_NSPACE(rc, "gds-shmem3-rereg");
+    PMIX_RELEASE(peer);
+}
+
 /* Does haystack contain needle? The register_job_info reply is packed
  * kvals, and what this test needs from it is only whether a particular
  * namespace name appears in it - which is a plain byte search, and keeps
@@ -3501,6 +3625,7 @@ int main(int argc, char **argv)
     test_scope_routing();
     test_realm_classifiers();
     test_shmem3_job_segment();
+    test_shmem3_reply_refresh_keeps_job_segment();
     test_shmem3_shared_session();
     test_shmem3_modex_generations();
     test_shmem3_modex_outgrows_estimate();
