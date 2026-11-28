@@ -57,6 +57,8 @@ void cli_init(int nprocs)
         }
         cli_info[n].rank = -1;
         cli_info[n].ns = NULL;
+        cli_info[n].exit_code = 0;
+        cli_info[n].term_signal = 0;
     }
 }
 
@@ -149,8 +151,12 @@ void cli_cleanup(cli_info_t *cli)
     case CLI_CONNECTED:
         /* error - means that process terminated w/o calling finalize */
         if (!test_abort) {
-            TEST_ERROR(
-                ("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
+            /* say which process and how it went: the exit status is
+             * the only evidence a client that died silently leaves */
+            TEST_ERROR(("rank %d (%s, pid %d) with state %d unexpectedly terminated: %s %d",
+                        cli_rank(cli), (NULL == cli->ns) ? "?" : cli->ns, (int) cli->pid,
+                        cli->state, (0 != cli->term_signal) ? "signal" : "exit status",
+                        (0 != cli->term_signal) ? cli->term_signal : cli->exit_code));
         }
         cli->state = CLI_TERM;
         test_abort = true;
@@ -158,8 +164,12 @@ void cli_cleanup(cli_info_t *cli)
     case CLI_FIN:
         /* error - means that process terminated w/o calling finalize */
         if (!test_abort) {
-            TEST_ERROR(
-                ("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
+            /* say which process and how it went: the exit status is
+             * the only evidence a client that died silently leaves */
+            TEST_ERROR(("rank %d (%s, pid %d) with state %d unexpectedly terminated: %s %d",
+                        cli_rank(cli), (NULL == cli->ns) ? "?" : cli->ns, (int) cli->pid,
+                        cli->state, (0 != cli->term_signal) ? "signal" : "exit status",
+                        (0 != cli->term_signal) ? cli->term_signal : cli->exit_code));
         }
         cli_finalize(cli);
         cli_cleanup(cli);

@@ -55,6 +55,8 @@ typedef struct {
     pmix_rank_t rank;
     char *ns;
     int exit_code;
+    /* the signal that ended it, or 0 if it exited */
+    int term_signal;
     bool alive;
 } cli_info_t;
 
