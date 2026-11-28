@@ -177,19 +177,21 @@ in the ``info`` array to select the devices whose distances are to be computed:
   Values include ``PMIX_DEVTYPE_BLOCK``, ``PMIX_DEVTYPE_GPU``,
   ``PMIX_DEVTYPE_NETWORK``, ``PMIX_DEVTYPE_OPENFABRICS``, ``PMIX_DEVTYPE_DMA``,
   ``PMIX_DEVTYPE_COPROC``, and others defined in ``pmix_common.h``.
-* ``PMIX_DEVICE_ID`` (``"pmix.dev.id"``) |mdash| a ``char*`` naming one device
-  whose distance is to be computed. The attribute may be given more than once
-  to request distances to several devices. See `NAMING A DEVICE`_ below for
-  what the string may contain. Any other value type returns
-  ``PMIX_ERR_BAD_PARAM`` |mdash| in particular, the ``pmix_data_array_t`` of
-  ``pmix_device_t`` that :ref:`PMIx_Get(3) <man3-PMIx_Get>` returns for this
-  key, which reports the devices a process was *assigned*, is not accepted
-  here; pass the ``uuid`` of each element instead.
-* ``PMIX_DEVICE_DIST_ORIGIN`` (``"pmix.dev.dist.origin"``) |mdash| a ``char*``
-  naming the device from which distances are to be computed, in any of the
-  forms accepted by ``PMIX_DEVICE_ID``, in place of a process location. The
-  ``cpuset`` argument is ignored when this directive is given. Returns
-  ``PMIX_ERR_NOT_FOUND`` if no device answers to the name, and
+* ``PMIX_DEVICE_ID`` (``"pmix.dev.id"``) |mdash| the device(s) whose
+  distances are to be computed: a ``char*`` naming one device, a
+  :ref:`pmix_device_t(5) <man5-pmix_device_t>`, or a ``pmix_data_array_t`` of
+  ``pmix_device_t`` naming each of its elements. The array is the form
+  :ref:`PMIx_Get(3) <man3-PMIx_Get>` returns for a process's own
+  ``PMIX_DEVICE_ID``, so a process can pass its assignment straight back. The
+  attribute may be given more than once to request distances to several
+  devices. See `NAMING A DEVICE`_ below for what a name may contain. Any other
+  value type, a device carrying neither an ``osname`` nor a ``uuid``, and an
+  empty array return ``PMIX_ERR_BAD_PARAM``.
+* ``PMIX_DEVICE_DIST_ORIGIN`` (``"pmix.dev.dist.origin"``) |mdash| the device
+  from which distances are to be computed, in place of a process location, in
+  any of the forms accepted by ``PMIX_DEVICE_ID``; an array must hold exactly
+  one device. The ``cpuset`` argument is ignored when this directive is given.
+  Returns ``PMIX_ERR_NOT_FOUND`` if no device answers to the name, and
   ``PMIX_ERR_BAD_PARAM`` if more than one does.
 
 
@@ -221,6 +223,12 @@ spellings, compared without regard to case:
   ``lspci -D`` prints it, or ``00000000:06:00.0``, as ``nvidia-smi`` does.
   The fields are compared by value, so the domain may be given at any width
   up to eight hex digits, but it must be present.
+
+A ``pmix_device_t`` is resolved by its ``osname`` when it has one, and by its
+``uuid`` otherwise; its ``type`` is not consulted. The ``osname`` comes first
+because it is how this node's topology names the device, while a UUID embeds
+the node name its producer used, which need not match the name this node
+gives itself (e.g., a fully qualified name against a short one).
 
 Every operating system device on the device's PCI function counts, not only
 the one reported in ``osname``: an InfiniBand adapter reported as ``mlx5_0``
@@ -281,8 +289,22 @@ To ask how far the process is from two specific adapters:
    rc = PMIx_Compute_distances(&topo, &cpuset, info, 2, &dist, &ndist);
 
 A process that was assigned devices by its host |mdash| see ``PMIX_DEVICE_ID``
-in :ref:`PMIx_Get(3) <man3-PMIx_Get>` |mdash| names each one by the ``uuid``
-of the corresponding element of the array it retrieved.
+in :ref:`PMIx_Get(3) <man3-PMIx_Get>` |mdash| can pass the value it retrieved
+straight back, to ask how far it is from each of them:
+
+.. code-block:: c
+
+   pmix_value_t *val = NULL;
+   pmix_info_t info;
+
+   if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_DEVICE_ID, NULL, 0, &val)) {
+       if (PMIX_DATA_ARRAY == val->type) {
+           PMIX_INFO_LOAD(&info, PMIX_DEVICE_ID, val->data.darray, PMIX_DATA_ARRAY);
+           rc = PMIx_Compute_distances(&topo, &cpuset, &info, 1, &dist, &ndist);
+           PMIX_INFO_DESTRUCT(&info);
+       }
+       PMIX_VALUE_RELEASE(val);
+   }
 
 
 RETURN VALUE
@@ -298,8 +320,9 @@ a PMIx error constant is returned, including:
   the devices named by ``PMIX_DEVICE_ID``, exists on the node; or the device
   named by ``PMIX_DEVICE_DIST_ORIGIN`` does not.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| a ``PMIX_DEVICE_ID`` or
-  ``PMIX_DEVICE_DIST_ORIGIN`` value is not a ``char*``, or the
-  ``PMIX_DEVICE_DIST_ORIGIN`` name matches more than one device.
+  ``PMIX_DEVICE_DIST_ORIGIN`` value is not one of the accepted forms, names a
+  device by neither ``osname`` nor ``uuid``, or is an empty array; or the
+  ``PMIX_DEVICE_DIST_ORIGIN`` names, or matches, more than one device.
 * ``PMIX_ERR_UNREACH`` |mdash| the request could not be satisfied locally and the
   local PMIx server could not be reached (or the caller is a server, or is not
   connected to a server).
@@ -317,6 +340,13 @@ indicates an appropriate error condition. PMIx error constants are defined in
 
 NOTES
 -----
+
+The ``pmix_device_t`` forms of ``PMIX_DEVICE_ID`` and
+``PMIX_DEVICE_DIST_ORIGIN`` are accepted where ``PMIX_CAP_DEVICE_ID_STRUCT``
+is defined in ``pmix_version.h``; an earlier library refuses them with
+``PMIX_ERR_BAD_PARAM``, or finds no device. When the request is
+relayed to the local server, each device is sent as the name it is resolved
+by, so a server that predates these forms answers it correctly.
 
 The ``PMIX_DEVICE_DIST_CREATE`` and ``PMIX_DEVICE_DIST_FREE`` convenience macros
 are deprecated. New code should manage ``pmix_device_distance_t`` arrays using

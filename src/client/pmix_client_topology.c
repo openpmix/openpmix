@@ -330,6 +330,8 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     pmix_cpuset_t nocpuset = {NULL, NULL};
     bool fromdev = false;
     size_t n;
+    pmix_info_t *rinfo = NULL, *sinfo;
+    size_t nrinfo = 0, nsinfo;
 
     if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
@@ -455,22 +457,33 @@ request:
         return rc;
     }
 
+    /* A device named by a pmix_device_t, or by the array of them a process
+     * is given as its assignment, travels as the name(s) it stands for.
+     * Every server before v7.0 reads PMIX_DEVICE_ID and
+     * PMIX_DEVICE_DIST_ORIGIN as strings without checking their type, so
+     * the structured form would be misread rather than refused. */
+    rc = pmix_hwloc_device_ids_to_strings(info, ninfo, &rinfo, &nrinfo);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_RELEASE(msg);
+        PMIX_RELEASE(cb);
+        return rc;
+    }
+    sinfo = (NULL == rinfo) ? info : rinfo;
+    nsinfo = (NULL == rinfo) ? ninfo : nrinfo;
+
     /* pack the directives */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nsinfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc && 0 < nsinfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, sinfo, nsinfo, PMIX_INFO);
+    }
+    if (NULL != rinfo) {
+        PMIx_Info_free(rinfo, nrinfo);
+    }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
         return rc;
-    }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            PMIX_RELEASE(cb);
-            return rc;
-        }
     }
 
     /* push the message into our event base to send to the server */

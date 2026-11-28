@@ -99,8 +99,9 @@ a program that needs one obtains it from the ``uuid`` field of a
 ``pmix_device_t`` or :ref:`pmix_device_distance_t(5)
 <man5-pmix_device_distance_t>` it was given, and may pass it back as a
 ``PMIX_DEVICE_ID`` (see :ref:`PMIx_Compute_distances(3)
-<man3-PMIx_Compute_distances>`). Most forms embed the name of the node the
-device is on, which is what makes them unique across the cluster.
+<man3-PMIx_Compute_distances>`), or pass the ``pmix_device_t`` itself. Most
+forms embed the name of the node the device is on, which is what makes them
+unique across the cluster.
 
 STATIC INITIALIZER
 ------------------

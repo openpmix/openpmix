@@ -394,9 +394,10 @@ available:
   :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`, or inside a
   ``PMIX_FABRIC_DEVICE`` or ``PMIX_SWITCH_PEERS`` array |mdash|
   ``PMIX_DEVICE_ID`` is a ``char*`` naming a single device. To ask how far
-  the process is from an assigned device, pass that element's ``uuid`` to
+  the process is from its assigned devices, pass the value itself to
   :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>` as a
-  ``PMIX_DEVICE_ID``.
+  ``PMIX_DEVICE_ID``, where ``PMIX_CAP_DEVICE_ID_STRUCT`` is defined, or each
+  element's ``uuid`` where it is not.
 
   .. code-block:: c
 

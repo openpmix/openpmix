@@ -2134,6 +2134,249 @@ static void test_driver_identities(const char *dir)
     remove_driver_tree(root, made);
 }
 
+/* Load one PMIX_DEVICE_ID/PMIX_DEVICE_DIST_ORIGIN value as an array of
+ * devices named as given (NULL leaves that name unset) */
+static void load_devarray(pmix_info_t *info, const char *key, size_t n,
+                          const char **osnames, const char **uuids)
+{
+    pmix_data_array_t *da;
+    pmix_device_t *d;
+    size_t i;
+
+    da = PMIx_Data_array_create(n, PMIX_DEVICE);
+    d = (pmix_device_t *) da->array;
+    for (i = 0; i < n; i++) {
+        d[i].osname = (NULL == osnames || NULL == osnames[i]) ? NULL : strdup(osnames[i]);
+        d[i].uuid = (NULL == uuids || NULL == uuids[i]) ? NULL : strdup(uuids[i]);
+        d[i].type = PMIX_DEVTYPE_OPENFABRICS;
+    }
+    PMIX_INFO_LOAD(info, key, da, PMIX_DATA_ARRAY);
+    PMIx_Data_array_free(da);
+}
+
+/* is "name" among the osnames of the result? */
+static bool dist_has(const pmix_device_distance_t *dist, size_t ndist, const char *name)
+{
+    size_t i;
+
+    for (i = 0; i < ndist; i++) {
+        if (NULL != dist[i].osname && 0 == strcmp(dist[i].osname, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* PMIX_DEVICE_ID and PMIX_DEVICE_DIST_ORIGIN accept a pmix_device_t, or the
+ * array of them PMIx_Get returns for a process's own assignment, so a
+ * process can hand its assignment straight back. */
+static void test_device_struct_inputs(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    pmix_device_distance_t *dist = NULL, *ref = NULL;
+    pmix_device_t dev;
+    pmix_value_t val;
+    pmix_info_t info[3], *out = NULL;
+    pmix_device_type_t oftype = PMIX_DEVTYPE_OPENFABRICS;
+    size_t ndevs = 0, ndist = 0, nref = 0, nout = 0, i;
+    char **names = NULL;
+    const char *two[] = {"mlx5_0", "rdmap32s0"};
+    const char *gpu[] = {"cuda0"};
+    const char *both[] = {"cuda0", "cuda1"};
+    char *localuuid = NULL;
+    bool good;
+    pmix_status_t rc;
+
+    /* --- what a value names --- */
+    PMIX_VALUE_CONSTRUCT(&val);
+    rc = pmix_hwloc_device_names(&val, &names);
+    ok(PMIX_ERR_BAD_PARAM == rc, "device names: an undefined value names nothing");
+    PMIx_Value_load(&val, "mlx5_0", PMIX_STRING);
+    rc = pmix_hwloc_device_names(&val, &names);
+    ok(PMIX_SUCCESS == rc && 1 == PMIx_Argv_count(names) && 0 == strcmp(names[0], "mlx5_0"),
+       "device names: a string is the name");
+    PMIx_Argv_free(names);
+    names = NULL;
+    PMIX_VALUE_DESTRUCT(&val);
+
+    /* a device is resolved by its osname when it has one: a uuid carries
+     * the producer's node name, which is not this node's here */
+    PMIx_Device_construct(&dev);
+    dev.osname = (char *) "mlx5_0";
+    dev.uuid = (char *) "fab://some-other-name::mlx5_0";
+    PMIX_VALUE_CONSTRUCT(&val);
+    PMIx_Value_load(&val, &dev, PMIX_DEVICE);
+    rc = pmix_hwloc_device_names(&val, &names);
+    ok(PMIX_SUCCESS == rc && 1 == PMIx_Argv_count(names) && 0 == strcmp(names[0], "mlx5_0"),
+       "device names: a device is named by its osname first");
+    PMIx_Argv_free(names);
+    names = NULL;
+    PMIX_VALUE_DESTRUCT(&val);
+    dev.osname = NULL;
+    PMIX_VALUE_CONSTRUCT(&val);
+    PMIx_Value_load(&val, &dev, PMIX_DEVICE);
+    rc = pmix_hwloc_device_names(&val, &names);
+    ok(PMIX_SUCCESS == rc && 1 == PMIx_Argv_count(names)
+           && 0 == strcmp(names[0], "fab://some-other-name::mlx5_0"),
+       "device names: and by its uuid when it has no osname");
+    PMIx_Argv_free(names);
+    names = NULL;
+    PMIX_VALUE_DESTRUCT(&val);
+    dev.uuid = NULL;
+    PMIX_VALUE_CONSTRUCT(&val);
+    PMIx_Value_load(&val, &dev, PMIX_DEVICE);
+    rc = pmix_hwloc_device_names(&val, &names);
+    ok(PMIX_ERR_BAD_PARAM == rc, "device names: a device with neither name is refused");
+    PMIx_Argv_free(names);
+    names = NULL;
+    PMIX_VALUE_DESTRUCT(&val);
+
+    /* an empty array must not read as "no device named" - that would
+     * widen the request to every device on the node */
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    load_devarray(&info[0], PMIX_DEVICE_ID, 0, NULL, NULL);
+    rc = pmix_hwloc_device_names(&info[0].value, &names);
+    ok(PMIX_ERR_BAD_PARAM == rc, "device names: an empty array is refused");
+    PMIx_Argv_free(names);
+    names = NULL;
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    if (0 != load_multi_rc(dir, &topo)) {
+        return;
+    }
+
+    /* --- an origin given as a device measures what its name measures --- */
+    rc = dist_from(&topo, "cuda0", &ref, &nref);
+    ok(PMIX_SUCCESS == rc && 0 < nref, "device input: reference distances from cuda0");
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_CONSTRUCT(&info[1]);
+    load_devarray(&info[0], PMIX_DEVICE_DIST_ORIGIN, 1, gpu, NULL);
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_TYPE, &oftype, PMIX_DEVTYPE);
+    rc = pmix_hwloc_compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+    good = (PMIX_SUCCESS == rc && ndist == nref);
+    for (i = 0; good && i < ndist; i++) {
+        good = (0 == strcmp(dist[i].osname, ref[i].osname) && dist[i].mindist == ref[i].mindist);
+    }
+    ok(good, "device input: an assignment of one device is accepted as the origin");
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+        dist = NULL;
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    /* ...but an origin must be one place */
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    load_devarray(&info[0], PMIX_DEVICE_DIST_ORIGIN, 2, both, NULL);
+    rc = pmix_hwloc_compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+    ok(PMIX_ERR_BAD_PARAM == rc && NULL == dist && 0 == ndist,
+       "device input: an origin naming two devices is refused");
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+
+    /* --- PMIX_DEVICE_ID given as an assignment selects exactly those --- */
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_CONSTRUCT(&info[1]);
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_DIST_ORIGIN, "cuda0", PMIX_STRING);
+    load_devarray(&info[1], PMIX_DEVICE_ID, 2, two, NULL);
+    rc = pmix_hwloc_compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+    ok(PMIX_SUCCESS == rc && 2 == ndist && dist_has(dist, ndist, "mlx5_0")
+           && dist_has(dist, ndist, "rdmap32s0"),
+       "device input: an assignment of two devices selects both, and nothing else");
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+        dist = NULL;
+    }
+    PMIX_INFO_DESTRUCT(&info[1]);
+
+    /* a device carrying only a uuid is found by it - one built for this
+     * node, as compute_distances measures against pmix_globals.hostname */
+    rc = pmix_hwloc_get_devices(&topo, pmix_globals.hostname, PMIX_DEVTYPE_OPENFABRICS,
+                                "mlx5_0", &devs, &ndevs);
+    if (PMIX_SUCCESS == rc && 1 == ndevs && NULL != devs[0].dev.uuid) {
+        localuuid = strdup(devs[0].dev.uuid);
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    ok(NULL != localuuid, "device input: mlx5_0 has a uuid on this node");
+    if (NULL != localuuid) {
+        const char *u[] = {localuuid};
+        PMIX_INFO_CONSTRUCT(&info[1]);
+        load_devarray(&info[1], PMIX_DEVICE_ID, 1, NULL, u);
+        rc = pmix_hwloc_compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+        ok(PMIX_SUCCESS == rc && 1 == ndist && dist_has(dist, ndist, "mlx5_0"),
+           "device input: a device with only a uuid is found by it");
+        if (NULL != dist) {
+            PMIx_Device_distance_free(dist, ndist);
+            dist = NULL;
+        }
+        PMIX_INFO_DESTRUCT(&info[1]);
+        free(localuuid);
+    }
+
+    /* a value of any other shape is still refused */
+    PMIX_INFO_CONSTRUCT(&info[1]);
+    i = 7;
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_ID, &i, PMIX_SIZE);
+    rc = pmix_hwloc_compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+    ok(PMIX_ERR_BAD_PARAM == rc && NULL == dist,
+       "device input: a PMIX_DEVICE_ID that is neither a name nor a device is refused");
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    /* --- what is relayed to a server: strings only, in the caller's order --- */
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_CONSTRUCT(&info[1]);
+    PMIX_INFO_CONSTRUCT(&info[2]);
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_TYPE, &oftype, PMIX_DEVTYPE);
+    load_devarray(&info[1], PMIX_DEVICE_ID, 2, two, NULL);
+    load_devarray(&info[2], PMIX_DEVICE_DIST_ORIGIN, 1, gpu, NULL);
+    rc = pmix_hwloc_device_ids_to_strings(info, 3, &out, &nout);
+    ok(PMIX_SUCCESS == rc && 4 == nout && NULL != out
+           && PMIX_CHECK_KEY(&out[0], PMIX_DEVICE_TYPE) && PMIX_DEVTYPE == out[0].value.type
+           && PMIX_CHECK_KEY(&out[1], PMIX_DEVICE_ID) && PMIX_STRING == out[1].value.type
+           && 0 == strcmp(out[1].value.data.string, "mlx5_0")
+           && PMIX_CHECK_KEY(&out[2], PMIX_DEVICE_ID) && PMIX_STRING == out[2].value.type
+           && 0 == strcmp(out[2].value.data.string, "rdmap32s0")
+           && PMIX_CHECK_KEY(&out[3], PMIX_DEVICE_DIST_ORIGIN) && PMIX_STRING == out[3].value.type
+           && 0 == strcmp(out[3].value.data.string, "cuda0"),
+       "relay: devices become one string per device, in order");
+    if (NULL != out) {
+        PMIx_Info_free(out, nout);
+        out = NULL;
+    }
+    /* the converted directives answer as the originals do */
+    rc = pmix_hwloc_device_ids_to_strings(info, 3, &out, &nout);
+    if (PMIX_SUCCESS == rc && NULL != out) {
+        rc = pmix_hwloc_compute_distances(&topo, NULL, out, nout, &dist, &ndist);
+        ok(PMIX_SUCCESS == rc && 2 == ndist && dist_has(dist, ndist, "mlx5_0")
+               && dist_has(dist, ndist, "rdmap32s0"),
+           "relay: the converted request selects the same devices");
+        if (NULL != dist) {
+            PMIx_Device_distance_free(dist, ndist);
+            dist = NULL;
+        }
+        PMIx_Info_free(out, nout);
+        out = NULL;
+    }
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[2]);
+    /* nothing to convert: relay the caller's array as it stands */
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_ID, "mlx5_0", PMIX_STRING);
+    rc = pmix_hwloc_device_ids_to_strings(info, 2, &out, &nout);
+    ok(PMIX_SUCCESS == rc && NULL == out && 0 == nout,
+       "relay: an all-string request is left alone");
+    PMIX_INFO_DESTRUCT(&info[1]);
+    /* an origin of two devices cannot be relayed either */
+    load_devarray(&info[1], PMIX_DEVICE_DIST_ORIGIN, 2, both, NULL);
+    rc = pmix_hwloc_device_ids_to_strings(info, 2, &out, &nout);
+    ok(PMIX_ERR_BAD_PARAM == rc && NULL == out, "relay: a two-device origin is refused");
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    PMIx_Device_distance_free(ref, nref);
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -2171,6 +2414,7 @@ int main(int argc, char **argv)
     test_aws_p5en(dir);
     test_aws_p6_b200(dir);
     test_driver_identities(dir);
+    test_device_struct_inputs(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
