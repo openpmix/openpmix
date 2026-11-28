@@ -328,7 +328,9 @@ a PMIx error constant is returned, including:
 * ``PMIX_ERR_BAD_PARAM`` |mdash| a ``PMIX_DEVICE_ID`` or
   ``PMIX_DEVICE_DIST_ORIGIN`` value is not one of the accepted forms, names a
   device by neither ``osname`` nor ``uuid``, or is an empty array; or the
-  ``PMIX_DEVICE_DIST_ORIGIN`` names, or matches, more than one device.
+  ``PMIX_DEVICE_DIST_ORIGIN`` names, or matches, more than one device; or a
+  ``PMIX_DEVICE_TYPE`` value is not a ``pmix_device_type_t`` (a
+  ``PMIX_UINT64`` is accepted as one).
 * ``PMIX_ERR_UNREACH`` |mdash| the request could not be satisfied locally and the
   local PMIx server could not be reached (or the caller is a server, or is not
   connected to a server).
