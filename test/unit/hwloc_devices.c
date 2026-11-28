@@ -2218,15 +2218,24 @@ static void load_devarray(pmix_info_t *info, const char *key, size_t n,
     pmix_device_t *d;
     size_t i;
 
-    da = PMIx_Data_array_create(n, PMIX_DEVICE);
+    /* Built in place rather than with PMIx_Data_array_create(), which
+     * returns NULL for n == 0: the empty case must be an array of no
+     * devices, not a missing one. The info takes ownership. */
+    da = (pmix_data_array_t *) calloc(1, sizeof(pmix_data_array_t));
+    if (NULL == da) {
+        fprintf(stderr, "out of memory\n");
+        exit(1);
+    }
+    PMIx_Data_array_construct(da, n, PMIX_DEVICE);
     d = (pmix_device_t *) da->array;
     for (i = 0; i < n; i++) {
         d[i].osname = (NULL == osnames || NULL == osnames[i]) ? NULL : strdup(osnames[i]);
         d[i].uuid = (NULL == uuids || NULL == uuids[i]) ? NULL : strdup(uuids[i]);
         d[i].type = PMIX_DEVTYPE_OPENFABRICS;
     }
-    PMIX_INFO_LOAD(info, key, da, PMIX_DATA_ARRAY);
-    PMIx_Data_array_free(da);
+    PMIX_LOAD_KEY(info->key, key);
+    info->value.type = PMIX_DATA_ARRAY;
+    info->value.data.darray = da;
 }
 
 /* is "name" among the osnames of the result? */
@@ -2316,6 +2325,15 @@ static void test_device_struct_inputs(const char *dir)
     PMIx_Argv_free(names);
     names = NULL;
     PMIX_INFO_DESTRUCT(&info[0]);
+
+    /* ...and neither may a value that names a data array and carries none */
+    PMIX_VALUE_CONSTRUCT(&val);
+    val.type = PMIX_DATA_ARRAY;
+    val.data.darray = NULL;
+    rc = pmix_hwloc_device_names(&val, &names);
+    ok(PMIX_ERR_BAD_PARAM == rc && NULL == names, "device names: a missing array is refused");
+    PMIx_Argv_free(names);
+    names = NULL;
 
     if (0 != load_multi_rc(dir, &topo)) {
         return;
