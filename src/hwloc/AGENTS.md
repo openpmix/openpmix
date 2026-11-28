@@ -456,6 +456,29 @@ Two consequences that are load-bearing:
   text: it is meant to be copied back exactly. Covered by
   `test_device_distances` in
   [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c).
+- **`pmix_hwloc_device_names()` is the one place that says what a device
+  directive may hold.** `PMIX_DEVICE_ID` and `PMIX_DEVICE_DIST_ORIGIN`
+  accept a string, a `pmix_device_t`, or a data array of them (the
+  assignment form `PMIx_Get` returns), and both
+  `pmix_hwloc_compute_distances()` and the client's relay
+  (`pmix_hwloc_device_ids_to_strings()`) go through it, so the two
+  cannot drift. Three choices in it are load-bearing:
+  - **A device is resolved by its osname first.** A uuid embeds the node
+    name its *producer* used - PRRTE's mapper builds an assignment's
+    uuids from `node->name` - while `compute_distances` builds the local
+    ones from `pmix_globals.hostname`, and the two need not agree (a
+    fully qualified name against a short one). The osname is what this
+    node's own enumeration calls the device, which is also how `pnet` and
+    `pgpu` resolve an assignment. `test_device_struct_inputs` runs with
+    exactly that mismatch (`TESTHOST` against `"testhost"`).
+  - **An empty array is an error, not "no device named".** The latter
+    widens the request to every device on the node.
+  - **The device's `type` is not consulted.** The name already
+    identifies one device, and filtering by type could select a different
+    OS device on the same function than the string form would.
+  The relay converts because every server before v7.0 reads both keys as
+  `value.data.string` with no type check, so a structured value sent to
+  one would be misread rather than refused.
 - **A device's vendor identity is usually absent, and that is not a
   failure.** `pmix_hwloc_device_t.vendor_id` carries the vendor's own name
   for the device — NVIDIA's `GPU-<uuid>` and its AMD and Level Zero

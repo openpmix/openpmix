@@ -85,6 +85,31 @@ PMIX_EXPORT pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pm
                                                        pmix_info_t info[], size_t ninfo,
                                                        pmix_device_distance_t **dist, size_t *ndist);
 
+/* The device names a PMIX_DEVICE_ID or PMIX_DEVICE_DIST_ORIGIN value
+ * carries, appended to *names.  The value may be a string, a
+ * pmix_device_t, or a data array of pmix_device_t - the form PMIx_Get
+ * returns for a process's own PMIX_DEVICE_ID, so a process can hand its
+ * assignment straight back.  A device is named by its osname when it has
+ * one and by its uuid otherwise: the osname is what this node's
+ * enumerator called the device, while a uuid embeds the node name the
+ * producer used, which need not be how this node names itself.
+ * Returns PMIX_ERR_BAD_PARAM for any other type, for a device carrying
+ * neither name, and for an empty array; *names may then hold the names
+ * appended before the failure, and is the caller's to free either way. */
+PMIX_EXPORT pmix_status_t pmix_hwloc_device_names(const pmix_value_t *val, char ***names);
+
+/* The directives of a device-distance request, with every PMIX_DEVICE_ID
+ * and PMIX_DEVICE_DIST_ORIGIN reduced to string form - one PMIX_DEVICE_ID
+ * per device named - so they can be relayed to a server that reads those
+ * keys only as strings, as every server before v7.0 does.  *out is NULL
+ * when nothing needed converting, so the caller can relay info as it
+ * stands; otherwise it is a new array the caller releases with
+ * PMIx_Info_free(*out, *nout).  Returns PMIX_ERR_BAD_PARAM for a value
+ * pmix_hwloc_device_names() rejects, and for an origin naming other than
+ * exactly one device. */
+PMIX_EXPORT pmix_status_t pmix_hwloc_device_ids_to_strings(const pmix_info_t *info, size_t ninfo,
+                                                           pmix_info_t **out, size_t *nout);
+
 /* One device found in a topology.
  *
  * "dev" is the identity an application sees - the same uuid and osname

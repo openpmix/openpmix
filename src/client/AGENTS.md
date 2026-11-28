@@ -2400,6 +2400,17 @@ the shift looks removable.
   same five in the same order with the same guard on the last. No
   guarded-unpack/unguarded-pack mismatch of the kind the eighth sweep
   found in the group commands.
+
+  **The directives it relays are not always the caller's.** A
+  `PMIX_DEVICE_ID` or `PMIX_DEVICE_DIST_ORIGIN` given as a
+  `pmix_device_t`, or as an array of them, is rewritten by
+  `pmix_hwloc_device_ids_to_strings()` into one string per device before
+  it is packed, and the packed `ninfo` is the rewritten count. Every
+  server before v7.0 reads both keys as strings without checking the type
+  tag, so sending the structure would be misread there rather than
+  refused. See [`src/hwloc/AGENTS.md`](../hwloc/AGENTS.md). Like the rest
+  of this reply path, the relay has no automated coverage; the
+  conversion itself is covered by `test_device_struct_inputs`.
 - **The `cnt = cb->nvals` narrowing (`size_t` → `int32_t`) is
   unreachable.** A wire count above `INT32_MAX` would go negative in
   `cnt`, but it has to survive `PMIX_DEVICE_DIST_CREATE` first — over a

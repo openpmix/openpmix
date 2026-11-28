@@ -81,6 +81,11 @@
 #define PMIX_CAP_DEREG_DEPARTS   29
 /* PMIx_Argv_idx: the index of a string in an argv-style array */
 #define PMIX_CAP_ARGV_IDX        30
+/* PMIx_Compute_distances accepts a pmix_device_t, or a data array of
+ * them - the form PMIx_Get returns for a process's own PMIX_DEVICE_ID -
+ * as the value of PMIX_DEVICE_ID and PMIX_DEVICE_DIST_ORIGIN, in addition
+ * to a string. Without this, only a string is accepted. */
+#define PMIX_CAP_DEVICE_ID_STRUCT 31
 
 
 /*****    DEPRECATED    *****/

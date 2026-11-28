@@ -1748,16 +1748,23 @@ typedef uint32_t pmix_rank_t;
                                                                    //         pmix_device_t(5) for every form); its node-local OS name
                                                                    //         (e.g., "mlx5_0", "cuda0", "eth0"); its vendor identity
                                                                    //         (e.g., an NVIDIA "GPU-<uuid>"); or the PCI bus id of its
-                                                                   //         function (e.g., "0000:06:00.0"). Within fabric-device
-                                                                   //         information the string is whatever the host registered,
-                                                                   //         and PMIx_server_deregister_resources matches it exactly.
+                                                                   //         function (e.g., "0000:06:00.0"). As a directive to
+                                                                   //         PMIx_Compute_distances it may also be given as a
+                                                                   //         pmix_device_t, or as the array of them PMIx_Get returns for a
+                                                                   //         process's own PMIX_DEVICE_ID, so a process can pass its
+                                                                   //         assignment straight back; each device is resolved by its
+                                                                   //         osname, or by its uuid when it has none (see
+                                                                   //         PMIX_CAP_DEVICE_ID_STRUCT). Within
+                                                                   //         fabric-device information the string is whatever the host
+                                                                   //         registered, and PMIx_server_deregister_resources matches it
+                                                                   //         exactly.
 #define PMIX_DEVICE_DIST_ORIGIN             "pmix.dev.dist.origin" // (char*) Compute distances from the named device instead of from a
                                                                    //         process location - e.g., the NICs nearest a GPU. The device may
-                                                                   //         be named by its UUID, the OS name of any of its OS devices, its
-                                                                   //         vendor identity (e.g., an NVIDIA "GPU-" UUID), or its PCI bus id
-                                                                   //         ("0000:06:00.0"). When given, the cpuset passed to
-                                                                   //         PMIx_Compute_distances is ignored and may be NULL. Only used as a
-                                                                   //         directive/qualifier.
+                                                                   //         be named in any of the forms PMIX_DEVICE_ID accepts as a
+                                                                   //         directive, including a pmix_device_t or an array holding exactly
+                                                                   //         one; the name must resolve to exactly one device. When given,
+                                                                   //         the cpuset passed to PMIx_Compute_distances is ignored and may
+                                                                   //         be NULL. Only used as a directive/qualifier.
 
 
 /* Descriptive Attributes */

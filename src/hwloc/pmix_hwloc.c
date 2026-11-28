@@ -1575,6 +1575,144 @@ static uint16_t device_to_device(const pmix_hwloc_device_t *a,
     return dist_value((unsigned) cpu, ahops + bhops);
 }
 
+/* The one name a pmix_device_t is resolved by - see the header for why
+ * the osname comes first */
+static const char *device_name(const pmix_device_t *dev)
+{
+    if (NULL == dev) {
+        return NULL;
+    }
+    return (NULL != dev->osname) ? dev->osname : dev->uuid;
+}
+
+pmix_status_t pmix_hwloc_device_names(const pmix_value_t *val, char ***names)
+{
+    const pmix_device_t *dev;
+    const char *nm;
+    size_t n;
+
+    if (NULL == val || NULL == names) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    switch (val->type) {
+        case PMIX_STRING:
+            if (NULL == val->data.string) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            PMIx_Argv_append_nosize(names, val->data.string);
+            return PMIX_SUCCESS;
+
+        case PMIX_DEVICE:
+            nm = device_name(val->data.device);
+            if (NULL == nm) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            PMIx_Argv_append_nosize(names, nm);
+            return PMIX_SUCCESS;
+
+        case PMIX_DATA_ARRAY:
+            /* an empty array names nothing - and must not be read as "no
+             * device named", which would widen the request to every
+             * device on the node */
+            if (NULL == val->data.darray || PMIX_DEVICE != val->data.darray->type
+                || NULL == val->data.darray->array || 0 == val->data.darray->size) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            dev = (const pmix_device_t *) val->data.darray->array;
+            for (n = 0; n < val->data.darray->size; n++) {
+                nm = device_name(&dev[n]);
+                if (NULL == nm) {
+                    return PMIX_ERR_BAD_PARAM;
+                }
+                PMIx_Argv_append_nosize(names, nm);
+            }
+            return PMIX_SUCCESS;
+
+        default:
+            return PMIX_ERR_BAD_PARAM;
+    }
+}
+
+pmix_status_t pmix_hwloc_device_ids_to_strings(const pmix_info_t *info, size_t ninfo,
+                                               pmix_info_t **out, size_t *nout)
+{
+    pmix_info_t *array;
+    char **names = NULL;
+    size_t n, m, k, count = 0;
+    bool convert = false;
+    bool isorigin;
+    pmix_status_t rc;
+
+    if (NULL == out || NULL == nout) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *out = NULL;
+    *nout = 0;
+    if (NULL == info || 0 == ninfo) {
+        return PMIX_SUCCESS;
+    }
+
+    /* first pass: validate, and count what the converted array needs */
+    for (n = 0; n < ninfo; n++) {
+        isorigin = PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_DIST_ORIGIN);
+        if (!isorigin && !PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
+            ++count;
+            continue;
+        }
+        rc = pmix_hwloc_device_names(&info[n].value, &names);
+        m = (NULL == names) ? 0 : (size_t) PMIx_Argv_count(names);
+        PMIx_Argv_free(names);
+        names = NULL;
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        if (isorigin && 1 != m) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        if (PMIX_STRING != info[n].value.type) {
+            convert = true;
+        }
+        count += m;
+    }
+    if (!convert) {
+        return PMIX_SUCCESS;
+    }
+
+    /* second pass: build it, keeping the caller's order */
+    array = PMIx_Info_create(count);
+    if (NULL == array) {
+        return PMIX_ERR_NOMEM;
+    }
+    k = 0;
+    for (n = 0; n < ninfo; n++) {
+        isorigin = PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_DIST_ORIGIN);
+        if (!isorigin && !PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
+            rc = PMIx_Info_xfer(&array[k], &info[n]);
+            if (PMIX_SUCCESS != rc) {
+                PMIx_Info_free(array, count);
+                return rc;
+            }
+            ++k;
+            continue;
+        }
+        /* validated above, so this cannot fail */
+        (void) pmix_hwloc_device_names(&info[n].value, &names);
+        for (m = 0; NULL != names && NULL != names[m]; m++) {
+            PMIX_INFO_LOAD(&array[k], isorigin ? PMIX_DEVICE_DIST_ORIGIN : PMIX_DEVICE_ID,
+                           names[m], PMIX_STRING);
+            array[k].flags = info[n].flags;
+            ++k;
+        }
+        PMIx_Argv_free(names);
+        names = NULL;
+    }
+
+    *out = array;
+    *nout = count;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuset,
                                            pmix_info_t info[], size_t ninfo,
                                            pmix_device_distance_t **dist, size_t *ndist)
@@ -1595,6 +1733,7 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     unsigned w, width = 0, pudepth = 0;
     pmix_device_type_t type = 0;
     char **devids = NULL;
+    char **onames = NULL;
     const char *origin = NULL;
     bool dup;
     /* one enumeration per device the caller named, or a single one of
@@ -1643,21 +1782,26 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
             if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_TYPE)) {
                 type |= info[n].value.data.devtype;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
-                /* the array-of-pmix_device_t form of this attribute
-                 * reports an assignment; it is not a selector */
-                if (PMIX_STRING != info[n].value.type
-                    || NULL == info[n].value.data.string) {
-                    rc = PMIX_ERR_BAD_PARAM;
+                /* a name, a pmix_device_t, or the array of them a process
+                 * is given as its assignment - each device is one name */
+                rc = pmix_hwloc_device_names(&info[n].value, &devids);
+                if (PMIX_SUCCESS != rc) {
                     goto cleanup;
                 }
-                PMIx_Argv_append_nosize(&devids, info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_DIST_ORIGIN)) {
-                if (PMIX_STRING != info[n].value.type
-                    || NULL == info[n].value.data.string) {
+                /* the same forms, but they must come to exactly one
+                 * device: distances are measured from a single place */
+                PMIx_Argv_free(onames);
+                onames = NULL;
+                rc = pmix_hwloc_device_names(&info[n].value, &onames);
+                if (PMIX_SUCCESS != rc) {
+                    goto cleanup;
+                }
+                if (1 != PMIx_Argv_count(onames)) {
                     rc = PMIX_ERR_BAD_PARAM;
                     goto cleanup;
                 }
-                origin = info[n].value.data.string;
+                origin = onames[0];
             }
         }
     }
@@ -1923,6 +2067,9 @@ cleanup:
     }
     if (NULL != devids) {
         PMIx_Argv_free(devids);
+    }
+    if (NULL != onames) {
+        PMIx_Argv_free(onames);
     }
     return rc;
 }
