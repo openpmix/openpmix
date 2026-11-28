@@ -3567,16 +3567,34 @@ server_register_job_info(
         if (job->conni) {
             break;
         }
-        // We don't, so register the new job info.
-        PMIX_GDS_SHMEM3_VVOUT(
-            "%s: %s registering new job info for namespace=%s", __func__,
-            PMIX_NAME_PRINT(&pmix_globals.myid), job->nspace_id
-        );
+        /* No cached reply does not mean no job data. Every path that
+         * changes what a client attaching now must be told - a local
+         * generation, a deleted key, a session or job update - drops
+         * the reply so the next one describes the change, and the
+         * segments it describes are already built and published. Only
+         * describe them again.
+         *
+         * Building the job data a second time is not merely wasted
+         * work. The registration segment is always named "jobdata", so
+         * a second one collides with the first: the create removes the
+         * live file as a leftover and puts the new one at that path, in
+         * the next arena slot. The reply then describes the first
+         * segment's address and size at a path holding the second
+         * segment's contents, and a client that maps it follows
+         * pointers laid out for the other slot - a SIGSEGV on its first
+         * fetch, for a client that connects after its namespace's first
+         * fence. */
+        if (NULL == pmix_gds_shmem3_chain_head(&job->job_chain)) {
+            PMIX_GDS_SHMEM3_VVOUT(
+                "%s: %s registering new job info for namespace=%s", __func__,
+                PMIX_NAME_PRINT(&pmix_globals.myid), job->nspace_id
+            );
 
-        rc = server_register_new_job_info(job);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            break;
+            rc = server_register_new_job_info(job);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
         }
 
         rc = cache_connection_info_for_job_shmem3(job);

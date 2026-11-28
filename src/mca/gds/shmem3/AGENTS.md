@@ -1136,6 +1136,26 @@ as success.
 - **`store`/`assemb_kvs_req`/`accept_kvs_resp` are `NULL` on purpose.**
   They rely on the framework macros' fallback to the local module; do not
   "complete the interface" by pointing them at half-implemented functions.
+- **A dropped `job->conni` means "describe it again", never "build it
+  again".** The cached job-info reply is released by every path that
+  changes what a client attaching now must be told —
+  `server_build_local()`, `del_key()`, `publish_session_update()`,
+  `server_add_job_data()` — and `server_register_job_info()` builds the
+  next one. It builds the job data only when the job chain is still
+  empty; otherwise it only repacks the description. It used to rebuild
+  whenever the reply was missing, and the registration segment is always
+  named `jobdata`, so the second build collided with the first: the
+  exclusive create removed the live file as a leftover and put the new
+  segment, placed in the next arena slot, at that path. The reply then
+  described the first segment's address and size at a path holding the
+  second's contents (the second blob being skipped as "already
+  attached", since the paths match), and the client died on its first
+  fetch following a pointer into the slot it had not mapped. It took a
+  client connecting after its namespace's first fence — rare enough to
+  surface as an occasional `run_tests18.pl` failure on a loaded Linux CI
+  runner. If you add a path that drops the reply, it needs nothing more;
+  if you add one that needs the job data rebuilt, publish a new
+  generation under its own name, as `server_add_job_data()` does.
 - **`smdata` is NULL until its segment exists.** A job tracker is created
   by `server_add_nspace()` at `PMIx_server_register_nspace` time, long
   before `register_job_info()` builds the job segment or a client maps it
@@ -1232,6 +1252,12 @@ against a peer bound to this module, read a job-level key and the whole
 job back out of the segment, and deregister. Where the component is not
 available it prints `SKIP` and passes, so the case is honest on macOS
 rather than absent.
+
+`test_shmem3_reply_refresh_keeps_job_segment()` builds a job's segments,
+withdraws a key (which drops the cached reply), and asks for the reply
+again: the second one must name the job segment exactly once. Against
+the unfixed component it names it twice — the two colliding segments
+above.
 
 `test_shmem3_modex_outgrows_estimate()` stores a contribution whose first
 blob holds one key and whose second holds thousands, so the segment sized
